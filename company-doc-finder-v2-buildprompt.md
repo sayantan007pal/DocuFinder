@@ -3023,6 +3023,1822 @@ LLAMA_CLOUD_API_KEY=llx-...
 | LangchainNodeParser import error | Wrong import path | `from llama_index.core.node_parser import LangchainNodeParser` |
 | Table extraction empty | PDF has image-based tables | Use `SHEETS_PROVIDER=llamasheets` or Unstructured hi_res |
 | LlamaSheets auth failed | Missing or invalid API key | Check `LLAMA_CLOUD_API_KEY` env var |
+| Next.js hydration error | Server/client mismatch | Wrap client-only code in `useEffect` or use `suppressHydrationWarning` |
+| next-auth session undefined | Missing SessionProvider | Wrap app in `<SessionProvider>` in providers.tsx |
+| API calls fail in production | Wrong NEXT_PUBLIC_API_URL | Set build-time env var, not runtime |
+| CORS errors in dev | Backend doesn't allow localhost:3000 | Add origin to FastAPI CORS middleware |
+| Zustand state lost on refresh | Missing persist middleware | Use `persist()` from zustand/middleware |
+| TanStack Query cache stale | Default staleTime too short | Set `staleTime: 60 * 1000` in QueryClient |
+
+---
+
+## Section 18 — Next.js Frontend Application
+
+> **Purpose:** Production-ready React frontend for the document finder. Connects to the FastAPI backend via REST API. Supports file upload, semantic search, document viewer, table extraction preview, and tenant-scoped authentication.
+
+---
+
+### 18.1 Technology Stack
+
+| Layer | Technology | Version | Notes |
+|-------|-----------|---------|-------|
+| **Framework** | Next.js | 15.x | App Router, Server Components, Server Actions |
+| **React** | React | 19.x | Concurrent features, use() hook, Suspense boundaries |
+| **Styling** | Tailwind CSS | 4.x | CSS-first config, container queries, P3 colors |
+| **UI Components** | shadcn/ui | latest | Copy-paste components, Radix primitives, fully customizable |
+| **State** | Zustand | 5.x | Lightweight global state for UI (sidebar, modals) |
+| **Data Fetching** | TanStack Query | 5.x | Server state, caching, optimistic updates, infinite scroll |
+| **Forms** | React Hook Form | 7.x | + Zod for validation, same schemas as backend |
+| **Auth** | next-auth (Auth.js) | 5.x | Credentials provider → FastAPI JWT flow |
+| **HTTP Client** | ky | 1.x | Tiny fetch wrapper, automatic retries, hooks |
+| **File Upload** | react-dropzone | 14.x | Drag & drop, chunked uploads via presigned URLs |
+| **Tables** | TanStack Table | 8.x | Headless table for extracted data preview |
+| **PDF Viewer** | react-pdf | 9.x | Inline PDF rendering with page navigation |
+| **Icons** | Lucide React | latest | Tree-shakeable, consistent with shadcn |
+| **Testing** | Vitest + Testing Library | latest | Fast unit tests, component tests |
+| **E2E** | Playwright | latest | Cross-browser e2e tests |
+
+**Key Dependencies (package.json):**
+```json
+{
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@tanstack/react-query": "^5.60.0",
+    "zustand": "^5.0.0",
+    "next-auth": "^5.0.0-beta.25",
+    "ky": "^1.7.0",
+    "react-hook-form": "^7.54.0",
+    "@hookform/resolvers": "^3.9.0",
+    "zod": "^3.24.0",
+    "react-dropzone": "^14.3.0",
+    "@tanstack/react-table": "^8.20.0",
+    "react-pdf": "^9.1.0",
+    "lucide-react": "^0.460.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.5.0",
+    "class-variance-authority": "^0.7.0",
+    "date-fns": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "vitest": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@playwright/test": "^1.48.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0"
+  }
+}
+```
+
+---
+
+### 18.2 Project Structure (frontend/ folder)
+
+```
+frontend/
+├── .env.local.example           # Copy to .env.local
+├── .env.production
+├── next.config.ts               # Next.js 15 config (turbopack, images, rewrites)
+├── tailwind.config.ts           # Tailwind 4 CSS config
+├── postcss.config.mjs
+├── tsconfig.json
+├── package.json
+├── components.json              # shadcn/ui config
+├── Dockerfile                   # Multi-stage production build
+├── docker-compose.frontend.yml  # Standalone frontend dev/prod
+│
+├── public/
+│   ├── favicon.ico
+│   └── logo.svg
+│
+├── src/
+│   ├── app/                     # Next.js App Router
+│   │   ├── layout.tsx           # Root layout (providers, fonts, metadata)
+│   │   ├── page.tsx             # Home → redirect to /documents
+│   │   ├── globals.css          # Tailwind imports + CSS vars
+│   │   │
+│   │   ├── (auth)/              # Auth route group (no sidebar)
+│   │   │   ├── login/page.tsx
+│   │   │   └── layout.tsx
+│   │   │
+│   │   ├── (dashboard)/         # Dashboard route group (with sidebar)
+│   │   │   ├── layout.tsx       # Sidebar + header wrapper
+│   │   │   ├── documents/
+│   │   │   │   ├── page.tsx               # Document list + upload
+│   │   │   │   └── [docId]/page.tsx       # Document detail + viewer
+│   │   │   ├── search/page.tsx            # Semantic search interface
+│   │   │   ├── tables/
+│   │   │   │   └── [docId]/page.tsx       # Extracted tables viewer
+│   │   │   └── settings/page.tsx          # User/tenant settings
+│   │   │
+│   │   └── api/                 # Next.js API routes (BFF pattern)
+│   │       └── auth/[...nextauth]/route.ts
+│   │
+│   ├── components/
+│   │   ├── ui/                  # shadcn/ui primitives (button, input, card, etc.)
+│   │   ├── layout/
+│   │   │   ├── sidebar.tsx
+│   │   │   ├── header.tsx
+│   │   │   └── mobile-nav.tsx
+│   │   ├── documents/
+│   │   │   ├── document-list.tsx
+│   │   │   ├── document-card.tsx
+│   │   │   ├── upload-dropzone.tsx
+│   │   │   └── upload-progress.tsx
+│   │   ├── search/
+│   │   │   ├── search-input.tsx
+│   │   │   ├── search-results.tsx
+│   │   │   └── result-card.tsx
+│   │   ├── viewer/
+│   │   │   ├── pdf-viewer.tsx
+│   │   │   └── docx-preview.tsx
+│   │   └── tables/
+│   │       ├── extracted-table.tsx
+│   │       └── table-download.tsx
+│   │
+│   ├── lib/
+│   │   ├── api-client.ts        # ky instance with auth interceptor
+│   │   ├── auth.ts              # next-auth config
+│   │   ├── utils.ts             # cn(), formatDate(), etc.
+│   │   └── constants.ts
+│   │
+│   ├── hooks/
+│   │   ├── use-documents.ts     # TanStack Query: list, upload, delete
+│   │   ├── use-search.ts        # TanStack Query: semantic search
+│   │   ├── use-tables.ts        # TanStack Query: extracted tables
+│   │   └── use-upload.ts        # Chunked upload with progress
+│   │
+│   ├── stores/
+│   │   └── ui-store.ts          # Zustand: sidebar state, modals
+│   │
+│   ├── types/
+│   │   ├── api.ts               # API response types (mirror backend schemas)
+│   │   ├── document.ts
+│   │   └── auth.ts
+│   │
+│   └── schemas/
+│       ├── login.ts             # Zod schema for login form
+│       ├── upload.ts            # Zod schema for upload metadata
+│       └── search.ts            # Zod schema for search params
+│
+└── tests/
+    ├── components/              # Vitest component tests
+    └── e2e/                     # Playwright e2e tests
+```
+
+---
+
+### [PHASE 12a] — Next.js Project Setup
+
+**[PROMPT]**
+
+```
+Create the Next.js 15 frontend project with this exact structure:
+
+1. Initialize project:
+   cd frontend && npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*"
+
+2. Install dependencies (exact versions from 18.1 table)
+
+3. Configure next.config.ts:
+   - Enable turbopack for dev
+   - Configure images (allow backend domain)
+   - Add rewrites to proxy /api/v1/* to backend during dev
+   - Set output: 'standalone' for Docker
+
+4. Set up Tailwind 4:
+   - Use @tailwindcss/postcss
+   - Configure CSS variables in globals.css for shadcn theming
+   - Add container queries plugin
+
+5. Initialize shadcn/ui:
+   npx shadcn@latest init
+   - Style: new-york
+   - Base color: zinc
+   - CSS variables: yes
+
+6. Install core shadcn components:
+   npx shadcn@latest add button input card dialog dropdown-menu avatar badge separator skeleton toast
+
+7. Create src/lib/utils.ts with cn() helper
+
+8. Create .env.local.example:
+   NEXT_PUBLIC_API_URL=http://localhost:8000
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=your-secret-here
+```
+
+**src/lib/utils.ts:**
+```typescript
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function formatDate(date: string | Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(date));
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+```
+
+**src/app/layout.tsx:**
+```tsx
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Providers } from "@/components/providers";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+
+export const metadata: Metadata = {
+  title: "DocuFinder",
+  description: "Company Document Finder & Summarizer",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} font-sans antialiased`}>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+```
+
+**src/components/providers.tsx:**
+```tsx
+"use client";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { SessionProvider } from "next-auth/react";
+import { useState } from "react";
+import { Toaster } from "@/components/ui/toaster";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000, // 1 minute
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  );
+
+  return (
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <Toaster />
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </SessionProvider>
+  );
+}
+```
+
+**src/lib/api-client.ts:**
+```typescript
+import ky from "ky";
+import { getSession } from "next-auth/react";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export const api = ky.create({
+  prefixUrl: `${API_BASE_URL}/api/v1`,
+  timeout: 30000,
+  hooks: {
+    beforeRequest: [
+      async (request) => {
+        const session = await getSession();
+        if (session?.accessToken) {
+          request.headers.set("Authorization", `Bearer ${session.accessToken}`);
+        }
+      },
+    ],
+    afterResponse: [
+      async (_request, _options, response) => {
+        if (response.status === 401) {
+          // Token expired - redirect to login
+          if (typeof window !== "undefined") {
+            window.location.href = "/login";
+          }
+        }
+        return response;
+      },
+    ],
+  },
+});
+
+// Type-safe API methods
+export const apiClient = {
+  get: <T>(url: string, options?: Parameters<typeof api.get>[1]) =>
+    api.get(url, options).json<T>(),
+  post: <T>(url: string, json?: unknown, options?: Parameters<typeof api.post>[1]) =>
+    api.post(url, { json, ...options }).json<T>(),
+  put: <T>(url: string, json?: unknown, options?: Parameters<typeof api.put>[1]) =>
+    api.put(url, { json, ...options }).json<T>(),
+  delete: <T>(url: string, options?: Parameters<typeof api.delete>[1]) =>
+    api.delete(url, options).json<T>(),
+};
+```
+
+**src/types/api.ts:**
+```typescript
+// Mirror backend Pydantic models
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  tenant_id: string;
+  role: "admin" | "user" | "viewer";
+  created_at: string;
+}
+
+export interface Document {
+  id: string;
+  tenant_id: string;
+  filename: string;
+  file_hash: string;
+  mime_type: string;
+  file_size: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  page_count?: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SearchResult {
+  doc_id: string;
+  filename: string;
+  chunk_text: string;
+  score: number;
+  page_number?: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  total: number;
+  query: string;
+  took_ms: number;
+}
+
+export interface ExtractedTable {
+  id: string;
+  doc_id: string;
+  page_number: number;
+  table_index: number;
+  headers: string[];
+  rows: string[][];
+  confidence: number;
+  extracted_at: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface ApiError {
+  detail: string;
+  code?: string;
+}
+```
+
+**[CHECK]**
+```bash
+cd frontend
+npm run dev
+# Open http://localhost:3000 — should see Next.js default page
+# No console errors
+# TanStack Query devtools visible in bottom-right
+```
+
+---
+
+### [PHASE 12b] — Authentication Flow (next-auth + FastAPI JWT)
+
+**[PROMPT]**
+
+```
+Implement next-auth v5 with Credentials provider that authenticates against
+the FastAPI backend. The backend issues JWT tokens at POST /api/v1/auth/login.
+
+Requirements:
+1. User logs in with email/password
+2. Frontend sends credentials to FastAPI /api/v1/auth/login
+3. FastAPI returns { access_token, token_type, user }
+4. Store access_token in next-auth session
+5. Attach token to all API requests via api-client.ts
+6. Handle token refresh (FastAPI returns new token in response header)
+7. Redirect to /documents after login, /login on 401
+```
+
+**src/lib/auth.ts:**
+```typescript
+import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+import type { NextAuthConfig } from "next-auth";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export const authConfig: NextAuthConfig = {
+  pages: {
+    signIn: "/login",
+  },
+  providers: [
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          });
+
+          if (!response.ok) {
+            return null;
+          }
+
+          const data = await response.json();
+
+          return {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            tenantId: data.user.tenant_id,
+            role: data.user.role,
+            accessToken: data.access_token,
+          };
+        } catch {
+          return null;
+        }
+      },
+    }),
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.tenantId = user.tenantId;
+        token.role = user.role;
+        token.accessToken = user.accessToken;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user.id = token.id as string;
+      session.user.tenantId = token.tenantId as string;
+      session.user.role = token.role as string;
+      session.accessToken = token.accessToken as string;
+      return session;
+    },
+  },
+  session: {
+    strategy: "jwt",
+    maxAge: 24 * 60 * 60, // 24 hours
+  },
+};
+
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+```
+
+**src/types/next-auth.d.ts:**
+```typescript
+import "next-auth";
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      tenantId: string;
+      role: string;
+    };
+    accessToken: string;
+  }
+
+  interface User {
+    id: string;
+    email: string;
+    name: string;
+    tenantId: string;
+    role: string;
+    accessToken: string;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    tenantId: string;
+    role: string;
+    accessToken: string;
+  }
+}
+```
+
+**src/app/api/auth/[...nextauth]/route.ts:**
+```typescript
+import { handlers } from "@/lib/auth";
+
+export const { GET, POST } = handlers;
+```
+
+**src/app/(auth)/login/page.tsx:**
+```tsx
+"use client";
+
+import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileText, Loader2 } from "lucide-react";
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
+
+export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/documents";
+  const [error, setError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = async (data: LoginForm) => {
+    setError(null);
+
+    const result = await signIn("credentials", {
+      email: data.email,
+      password: data.password,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("Invalid email or password");
+    } else {
+      router.push(callbackUrl);
+      router.refresh();
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-muted/30">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            <FileText className="h-12 w-12 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">DocuFinder</CardTitle>
+          <p className="text-muted-foreground">
+            Sign in to access your documents
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {error && (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                {error}
+              </div>
+            )}
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@company.com"
+                {...register("email")}
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-sm text-destructive">
+                  {errors.password.message}
+                </p>
+              )}
+            </div>
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign in"
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+```
+
+**src/middleware.ts:**
+```typescript
+import { auth } from "@/lib/auth";
+import { NextResponse } from "next/server";
+
+export default auth((req) => {
+  const { nextUrl, auth: session } = req;
+  const isLoggedIn = !!session;
+  const isAuthPage = nextUrl.pathname.startsWith("/login");
+  const isApiRoute = nextUrl.pathname.startsWith("/api");
+  const isPublicRoute = nextUrl.pathname === "/";
+
+  // Allow API routes and public routes
+  if (isApiRoute || isPublicRoute) {
+    return NextResponse.next();
+  }
+
+  // Redirect logged-in users away from login page
+  if (isAuthPage && isLoggedIn) {
+    return NextResponse.redirect(new URL("/documents", nextUrl));
+  }
+
+  // Redirect unauthenticated users to login
+  if (!isLoggedIn && !isAuthPage) {
+    const callbackUrl = encodeURIComponent(nextUrl.pathname);
+    return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, nextUrl));
+  }
+
+  return NextResponse.next();
+});
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|logo.svg).*)"],
+};
+```
+
+**[CHECK]**
+```bash
+# 1. Ensure FastAPI backend is running on :8000
+# 2. Start frontend: npm run dev
+# 3. Navigate to http://localhost:3000/documents
+#    → Should redirect to /login
+# 4. Login with valid credentials
+#    → Should redirect to /documents
+# 5. Open DevTools Network tab
+#    → Subsequent API calls should have Authorization header
+```
+
+---
+
+### [PHASE 12c] — Core UI Components
+
+**[PROMPT]**
+
+```
+Build the core UI components for the dashboard:
+1. Sidebar with navigation (documents, search, settings)
+2. Upload dropzone with drag-and-drop and progress
+3. Semantic search interface with results
+4. Extracted table viewer with export
+
+Use shadcn/ui components where possible. All data fetching via TanStack Query hooks.
+```
+
+**src/components/layout/sidebar.tsx:**
+```tsx
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import {
+  FileText,
+  Search,
+  Table2,
+  Settings,
+  LogOut,
+  ChevronLeft,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useUIStore } from "@/stores/ui-store";
+
+const navItems = [
+  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/search", label: "Search", icon: Search },
+  { href: "/tables", label: "Tables", icon: Table2 },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { data: session } = useSession();
+  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+
+  return (
+    <aside
+      className={cn(
+        "flex flex-col h-screen bg-card border-r transition-all duration-300",
+        sidebarCollapsed ? "w-16" : "w-64"
+      )}
+    >
+      {/* Logo */}
+      <div className="flex items-center h-16 px-4 border-b">
+        <FileText className="h-8 w-8 text-primary shrink-0" />
+        {!sidebarCollapsed && (
+          <span className="ml-3 text-lg font-semibold">DocuFinder</span>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto"
+          onClick={toggleSidebar}
+        >
+          <ChevronLeft
+            className={cn(
+              "h-4 w-4 transition-transform",
+              sidebarCollapsed && "rotate-180"
+            )}
+          />
+        </Button>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 py-4">
+        <ul className="space-y-1 px-2">
+          {navItems.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                  "hover:bg-muted",
+                  pathname.startsWith(item.href)
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground"
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* User */}
+      <div className="border-t p-4">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback>
+              {session?.user?.name?.charAt(0) || "U"}
+            </AvatarFallback>
+          </Avatar>
+          {!sidebarCollapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                {session?.user?.name}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {session?.user?.email}
+              </p>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+```
+
+**src/stores/ui-store.ts:**
+```typescript
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+interface UIState {
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+}
+
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      sidebarCollapsed: false,
+      toggleSidebar: () =>
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+    }),
+    {
+      name: "ui-storage",
+    }
+  )
+);
+```
+
+**src/components/documents/upload-dropzone.tsx:**
+```tsx
+"use client";
+
+import { useCallback, useState } from "react";
+import { useDropzone } from "react-dropzone";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Upload, File, X, CheckCircle, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { api } from "@/lib/api-client";
+
+interface UploadFile {
+  file: File;
+  progress: number;
+  status: "pending" | "uploading" | "success" | "error";
+  error?: string;
+}
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const ACCEPTED_TYPES = {
+  "application/pdf": [".pdf"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+    ".docx",
+  ],
+};
+
+export function UploadDropzone() {
+  const [files, setFiles] = useState<UploadFile[]>([]);
+  const queryClient = useQueryClient();
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      return api
+        .post("documents/upload", {
+          body: formData,
+          timeout: 120000, // 2 min for large files
+          onUploadProgress: (progress) => {
+            if (progress.percent) {
+              setFiles((prev) =>
+                prev.map((f) =>
+                  f.file.name === file.name
+                    ? { ...f, progress: progress.percent! }
+                    : f
+                )
+              );
+            }
+          },
+        })
+        .json();
+    },
+    onSuccess: (_data, file) => {
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.file.name === file.name ? { ...f, status: "success" } : f
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error, file) => {
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.file.name === file.name
+            ? { ...f, status: "error", error: (error as Error).message }
+            : f
+        )
+      );
+    },
+  });
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const newFiles: UploadFile[] = acceptedFiles.map((file) => ({
+        file,
+        progress: 0,
+        status: "pending" as const,
+      }));
+
+      setFiles((prev) => [...prev, ...newFiles]);
+
+      // Upload each file
+      for (const { file } of newFiles) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.file.name === file.name ? { ...f, status: "uploading" } : f
+          )
+        );
+        uploadMutation.mutate(file);
+      }
+    },
+    [uploadMutation]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_TYPES,
+    maxSize: MAX_FILE_SIZE,
+    multiple: true,
+  });
+
+  const removeFile = (fileName: string) => {
+    setFiles((prev) => prev.filter((f) => f.file.name !== fileName));
+  };
+
+  const clearCompleted = () => {
+    setFiles((prev) => prev.filter((f) => f.status !== "success"));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div
+        {...getRootProps()}
+        className={cn(
+          "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+          isDragActive
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25 hover:border-primary/50"
+        )}
+      >
+        <input {...getInputProps()} />
+        <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+        <p className="text-lg font-medium">
+          {isDragActive ? "Drop files here" : "Drag & drop files here"}
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          or click to browse. PDF and DOCX files up to 50MB.
+        </p>
+      </div>
+
+      {files.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium">Uploads</h4>
+            {files.some((f) => f.status === "success") && (
+              <Button variant="ghost" size="sm" onClick={clearCompleted}>
+                Clear completed
+              </Button>
+            )}
+          </div>
+          {files.map((f) => (
+            <div
+              key={f.file.name}
+              className="flex items-center gap-3 p-3 bg-muted/50 rounded-md"
+            >
+              <File className="h-5 w-5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{f.file.name}</p>
+                {f.status === "uploading" && (
+                  <Progress value={f.progress} className="h-1 mt-1" />
+                )}
+                {f.status === "error" && (
+                  <p className="text-xs text-destructive mt-1">{f.error}</p>
+                )}
+              </div>
+              {f.status === "success" && (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              )}
+              {f.status === "error" && (
+                <AlertCircle className="h-5 w-5 text-destructive" />
+              )}
+              {f.status !== "uploading" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => removeFile(f.file.name)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**src/components/search/search-interface.tsx:**
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, Loader2, FileText, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiClient } from "@/lib/api-client";
+import type { SearchResponse } from "@/types/api";
+import { useDebounce } from "@/hooks/use-debounce";
+
+export function SearchInterface() {
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 300);
+
+  const {
+    data: searchResults,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: ["search", debouncedQuery],
+    queryFn: () =>
+      apiClient.get<SearchResponse>(`search?q=${encodeURIComponent(debouncedQuery)}`),
+    enabled: debouncedQuery.length >= 3,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Search Input */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search documents semantically..."
+          className="pl-10 pr-10 h-12 text-lg"
+        />
+        {query && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8"
+            onClick={() => setQuery("")}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {/* Search hint */}
+      {!searchResults && !isLoading && query.length < 3 && query.length > 0 && (
+        <p className="text-sm text-muted-foreground text-center">
+          Type at least 3 characters to search
+        </p>
+      )}
+
+      {/* Loading state */}
+      {(isLoading || isFetching) && debouncedQuery.length >= 3 && (
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-3/4 mb-2" />
+                <Skeleton className="h-3 w-full mb-1" />
+                <Skeleton className="h-3 w-5/6" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Results */}
+      {searchResults && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {searchResults.total} results in {searchResults.took_ms}ms
+            </p>
+          </div>
+
+          {searchResults.results.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                No documents match your search
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {searchResults.results.map((result, index) => (
+                <Card
+                  key={`${result.doc_id}-${index}`}
+                  className="hover:bg-muted/50 transition-colors cursor-pointer"
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <FileText className="h-5 w-5 mt-0.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-medium truncate">
+                            {result.filename}
+                          </h3>
+                          <Badge variant="secondary" className="shrink-0">
+                            {Math.round(result.score * 100)}%
+                          </Badge>
+                          {result.page_number && (
+                            <Badge variant="outline" className="shrink-0">
+                              Page {result.page_number}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {result.chunk_text}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**src/hooks/use-debounce.ts:**
+```typescript
+import { useState, useEffect } from "react";
+
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+```
+
+**src/components/tables/extracted-table.tsx:**
+```tsx
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  flexRender,
+  createColumnHelper,
+} from "@tanstack/react-table";
+import { Download, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiClient } from "@/lib/api-client";
+import type { ExtractedTable as ExtractedTableType } from "@/types/api";
+
+interface ExtractedTableProps {
+  docId: string;
+}
+
+export function ExtractedTable({ docId }: ExtractedTableProps) {
+  const { data: tables, isLoading } = useQuery({
+    queryKey: ["tables", docId],
+    queryFn: () =>
+      apiClient.get<ExtractedTableType[]>(`extract/tables/${docId}`),
+  });
+
+  const downloadCSV = (table: ExtractedTableType) => {
+    const csvContent = [
+      table.headers.join(","),
+      ...table.rows.map((row) =>
+        row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `table-${table.page_number}-${table.table_index}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[...Array(2)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-5 w-48" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-32 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!tables || tables.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">
+          No tables extracted from this document
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {tables.map((table) => (
+        <Card key={table.id}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-base">
+              Page {table.page_number}, Table {table.table_index + 1}
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadCSV(table)}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border overflow-auto max-h-96">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {table.headers.map((header, i) => (
+                      <TableHead key={i} className="whitespace-nowrap">
+                        {header}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {table.rows.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <TableCell key={cellIndex}>{cell}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {table.rows.length} rows · Confidence:{" "}
+              {Math.round(table.confidence * 100)}%
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+```
+
+**src/app/(dashboard)/layout.tsx:**
+```tsx
+import { Sidebar } from "@/components/layout/sidebar";
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-auto">
+        <div className="container max-w-6xl py-8">{children}</div>
+      </main>
+    </div>
+  );
+}
+```
+
+**src/app/(dashboard)/documents/page.tsx:**
+```tsx
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { UploadDropzone } from "@/components/documents/upload-dropzone";
+import { DocumentList } from "@/components/documents/document-list";
+import { apiClient } from "@/lib/api-client";
+import type { PaginatedResponse, Document } from "@/types/api";
+
+export default function DocumentsPage() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["documents"],
+    queryFn: () => apiClient.get<PaginatedResponse<Document>>("documents"),
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Documents</h1>
+          <p className="text-muted-foreground">
+            Upload and manage your documents
+          </p>
+        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Upload
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Upload Documents</DialogTitle>
+            </DialogHeader>
+            <UploadDropzone />
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <DocumentList documents={data?.items || []} isLoading={isLoading} />
+    </div>
+  );
+}
+```
+
+**[CHECK]**
+```bash
+cd frontend && npm run dev
+# Open http://localhost:3000/documents
+# ✓ Sidebar renders with navigation
+# ✓ Upload dialog opens, drag-drop works
+# ✓ /search page shows search input
+# ✓ Tables page renders (empty state OK)
+# ✓ Sidebar collapse button works
+# ✓ Logout button redirects to /login
+```
+
+---
+
+### [PHASE 12d] — Docker & Production Deployment
+
+**[PROMPT]**
+
+```
+Create Docker configuration for the Next.js frontend:
+1. Multi-stage Dockerfile (builder → runner)
+2. Output standalone mode for minimal image
+3. Docker Compose for frontend + backend integration
+4. Production environment variables
+5. Nginx reverse proxy for unified API
+```
+
+**frontend/Dockerfile:**
+```dockerfile
+# syntax=docker/dockerfile:1
+
+# ─────────────────────────────────────────────────────────────
+# Stage 1: Dependencies
+# ─────────────────────────────────────────────────────────────
+FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --ignore-scripts
+
+# ─────────────────────────────────────────────────────────────
+# Stage 2: Builder
+# ─────────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build-time env vars
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN npm run build
+
+# ─────────────────────────────────────────────────────────────
+# Stage 3: Runner
+# ─────────────────────────────────────────────────────────────
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+```
+
+**frontend/next.config.ts:**
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  output: "standalone",
+  reactStrictMode: true,
+
+  // Image optimization
+  images: {
+    remotePatterns: [
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "8000",
+      },
+      {
+        protocol: "https",
+        hostname: process.env.BACKEND_HOST || "api.example.com",
+      },
+    ],
+  },
+
+  // API proxy for development
+  async rewrites() {
+    return process.env.NODE_ENV === "development"
+      ? [
+          {
+            source: "/api/v1/:path*",
+            destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/:path*`,
+          },
+        ]
+      : [];
+  },
+
+  // Security headers
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
+    ];
+  },
+
+  // Enable Turbopack for dev
+  experimental: {
+    turbo: {
+      rules: {
+        // Custom Turbopack rules if needed
+      },
+    },
+  },
+};
+
+export default nextConfig;
+```
+
+**docker-compose.frontend.yml:**
+```yaml
+# Frontend development/production with backend integration
+version: "3.9"
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+    depends_on:
+      - backend
+    networks:
+      - docufinder
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  backend:
+    # Reference main docker-compose.yml backend service
+    extends:
+      file: docker-compose.yml
+      service: backend
+    networks:
+      - docufinder
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - docufinder
+    restart: unless-stopped
+
+networks:
+  docufinder:
+    driver: bridge
+```
+
+**nginx/nginx.conf:**
+```nginx
+# Production nginx config for DocuFinder
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml application/json application/javascript 
+               application/xml application/rss+xml application/atom+xml image/svg+xml;
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=upload:10m rate=2r/s;
+
+    # Upstream servers
+    upstream frontend {
+        server frontend:3000;
+        keepalive 32;
+    }
+
+    upstream backend {
+        server backend:8000;
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+
+        # Security headers
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # API routes → FastAPI backend
+        location /api/ {
+            limit_req zone=api burst=20 nodelay;
+            
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Connection "";
+            
+            # Timeouts for long-running requests
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 120s;
+            proxy_read_timeout 120s;
+        }
+
+        # File uploads with larger body limit
+        location /api/v1/documents/upload {
+            limit_req zone=upload burst=5 nodelay;
+            client_max_body_size 100M;
+            
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_request_buffering off;
+        }
+
+        # Health check endpoints
+        location /health {
+            proxy_pass http://backend/health;
+            proxy_http_version 1.1;
+        }
+
+        # Everything else → Next.js frontend
+        location / {
+            proxy_pass http://frontend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Next.js static files
+        location /_next/static/ {
+            proxy_pass http://frontend;
+            proxy_cache_valid 200 365d;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+    }
+}
+```
+
+**frontend/.env.production:**
+```bash
+# Production environment variables
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+NEXTAUTH_URL=https://yourdomain.com
+NEXTAUTH_SECRET=your-production-secret-here
+```
+
+**[CHECK]**
+```bash
+# Build and run full stack
+docker compose -f docker-compose.yml -f docker-compose.frontend.yml up --build
+
+# Verify:
+# ✓ Frontend accessible at http://localhost:3000
+# ✓ API calls proxied correctly (check Network tab)
+# ✓ Login flow works end-to-end
+# ✓ File upload completes successfully
+# ✓ Search returns results from backend
+
+# Production build size check
+docker images | grep docufinder-frontend
+# Should be < 200MB
+```
+
+---
+
+### [CHECK] — Next.js Frontend Verification Checklist
+
+| Check | Command/Action | Expected |
+|-------|----------------|----------|
+| Dependencies install | `cd frontend && npm ci` | No errors, node_modules created |
+| TypeScript compiles | `npm run type-check` | No type errors |
+| Lint passes | `npm run lint` | No lint errors |
+| Dev server starts | `npm run dev` | http://localhost:3000 accessible |
+| Auth redirect works | Visit /documents unauthenticated | Redirects to /login |
+| Login flow | Enter valid credentials | Redirects to /documents |
+| Session persists | Refresh page after login | Still authenticated |
+| Upload works | Drag PDF to dropzone | Progress shown, document appears in list |
+| Search works | Enter 3+ chars in search | Results from backend displayed |
+| Tables render | Navigate to /tables/[docId] | Extracted tables shown (or empty state) |
+| Logout works | Click logout in sidebar | Redirects to /login, session cleared |
+| Docker builds | `docker build -t frontend ./frontend` | Image < 200MB |
+| Production mode | `npm run build && npm start` | No hydration errors |
+| Responsive design | Resize to mobile width | Sidebar collapses, UI adapts |
 
 ---
 
@@ -3046,6 +4862,10 @@ Phase 9a-d → LlamaSheets table extraction (Section 13.5)
 Phase 10 → RAGAS evaluation
 Phase 11 → Observability + hardening
 Phase 11b → S3/MinIO backup system (Section 15.5)
+Phase 12a → Next.js project setup + providers + API client (Section 18)
+Phase 12b → Authentication flow (next-auth + FastAPI JWT)
+Phase 12c → Core UI components (sidebar, upload, search, tables)
+Phase 12d → Docker & production deployment + nginx proxy
 E1–E6   → Emergent capabilities
 ```
 
@@ -3053,4 +4873,4 @@ E1–E6   → Emergent capabilities
 
 *Generated: April 2026 · Stack: LlamaIndex 0.12, Qdrant 1.16, Gemma 4 (Ollama 0.20+),*  
 *Valkey 8 (valkey-py 6), MongoDB 8 (Motor 3, Beanie 1.26), Unstructured 0.15, LiteParse 0.1,*  
-*LangChain Text Splitters 0.3 (RecursiveCharacterTextSplitter)*
+*LangChain Text Splitters 0.3, Next.js 15, React 19, Tailwind CSS 4, shadcn/ui, TanStack Query v5, next-auth v5*
