@@ -1,0 +1,198 @@
+# ===========================
+# Secrets & Environment
+# ===========================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+.virtualenv/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django / Flask / FastAPI
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+
+# mypy / pyright / ruff
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.ruff_cache/
+
+# uv
+.uv/
+uv.lock
+
+# ===========================
+# Node.js / Next.js
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+lerna-debug.log*
+
+.next/
+out/
+dist/
+.nuxt/
+.output/
+.vercel/
+.netlify/
+
+*.tsbuildinfo
+next-env.d.ts
+.env.production.local
+
+# ===========================
+# Docker
+# ===========================
+.dockerignore
+
+# ===========================
+# Data & Uploads
+# ===========================
+uploads/
+watch_root/
+backups/
+/tmp/
+
+# Ollama models (large)
+ollama_models/
+
+# Vector store data
+qdrant_storage/
+
+# MongoDB data
+mongo_data/
+
+# Valkey/Redis data
+valkey_data/
+
+# ===========================
+# ML / AI Model Files
+# ===========================
+*.bin
+*.safetensors
+*.gguf
+*.ggml
+*.pt
+*.pth
+*.onnx
+models/
+.cache/huggingface/
+.cache/torch/
+
+# ===========================
+# OS & Editors
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ===========================
+# Logs & Runtime
+# ===========================
+logs/
+*.log
+*.log.*
+celerybeat-schedule
+celerybeat.pid
+*.pid
+
+# ===========================
+# Evaluation Results
+# ===========================
+tests/eval/results_*.json
+
+# ===========================
+# Build prompt (large, not needed in repo)
+# Keep for reference but can exclude from CI
+# ===========================
+# company-doc-finder-v2-buildprompt.md
