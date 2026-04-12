@@ -59,7 +59,8 @@ def init_collection(client: QdrantClient, collection_name: str) -> bool:
         info = client.get_collection(collection_name)
         print(f"Collection '{collection_name}' already exists.")
         print(f"  Status:        {info.status}")
-        print(f"  Vectors count: {info.vectors_count or 0}")
+        vec_count = getattr(info, "vectors_count", None) or getattr(info, "points_count", 0) or 0
+        print(f"  Vectors count: {vec_count}")
         return False
 
     print(f"Creating collection '{collection_name}'...")
@@ -133,9 +134,10 @@ def verify(client: QdrantClient, collection_name: str) -> None:
 
     print()
     print("── Verification ──────────────────────────────────")
+    vec_count = getattr(info, "vectors_count", None) or getattr(info, "points_count", 0) or 0
     print(f"  Collection:  {collection_name}")
     print(f"  Status:      {info.status}")
-    print(f"  Vectors:     {info.vectors_count or 0}")
+    print(f"  Vectors:     {vec_count}")
 
     # Show vector config
     if hasattr(info, "config") and info.config and hasattr(info.config, "params"):

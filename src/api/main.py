@@ -31,27 +31,44 @@ async def lifespan(app: FastAPI):
     """
     Startup: initialize all services.
     Shutdown: close all connections.
+    Non-critical services (tracing, Qdrant) are non-fatal — API starts even if degraded.
     """
     settings = get_settings()
     log.info("docufinder_starting", environment=settings.environment)
 
-    # 1. Init tracing (non-fatal if Phoenix not running)
-    setup_tracing()
+    # 1. Init tracing (non-fatal)
+    try:
+        setup_tracing()
+    except Exception as e:
+        log.warning("tracing_skipped", error=str(e))
 
-    # 2. Init MongoDB + Beanie (creates indexes on first run)
-    from src.core.database import init_db
-    await init_db()
+    # 2. Init MongoDB + Beanie
+    try:
+        from src.core.database import init_db
+        await init_db()
+    except Exception as e:
+        log.warning("db_init_failed", error=str(e),
+                    hint="Start MongoDB: mongod --dbpath /tmp/mongo-data")
 
-    # 3. Configure LlamaIndex global settings
-    from src.retrieval.engine import configure_llamaindex
-    configure_llamaindex()
+    # 3. Configure LlamaIndex global settings (non-fatal — embed model downloads on first use)
+    try:
+        from src.retrieval.engine import configure_llamaindex
+        configure_llamaindex()
+    except Exception as e:
+        log.warning("llamaindex_config_failed", error=str(e))
 
-    # 4. Verify Qdrant connection
-    from src.core.qdrant_client import init_qdrant_connection
-    await init_qdrant_connection()
+    # 4. Verify Qdrant connection (non-fatal)
+    try:
+        from src.core.qdrant_client import init_qdrant_connection
+        await init_qdrant_connection()
+    except Exception as e:
+        log.warning("qdrant_init_failed", error=str(e))
 
     # 5. Log active providers
-    log_active_providers()
+    try:
+        log_active_providers()
+    except Exception as e:
+        log.warning("providers_log_failed", error=str(e))
 
     log.info("docufinder_ready",
              api_url="http://0.0.0.0:8001",
@@ -61,10 +78,13 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     log.info("docufinder_shutting_down")
-    from src.core.database import close_db_connections
-    from src.core.valkey_client import close_valkey
-    await close_db_connections()
-    await close_valkey()
+    try:
+        from src.core.database import close_db_connections
+        from src.core.valkey_client import close_valkey
+        await close_db_connections()
+        await close_valkey()
+    except Exception:
+        pass
     log.info("docufinder_stopped")
 
 

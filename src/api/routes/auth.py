@@ -7,11 +7,11 @@ RULE: tenant_id MUST come ONLY from decoded JWT.
 import re
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import structlog
 from beanie import PydanticObjectId
 from fastapi import APIRouter, HTTPException, status
 from jose import jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 
 from src.core.config import get_settings
@@ -19,8 +19,6 @@ from src.models.db import DocRecord, Tenant, User
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 
@@ -68,11 +66,16 @@ class TokenResponse(BaseModel):
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """bcrypt 5.x compatible password hashing."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    """bcrypt 5.x compatible password verification."""
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def create_access_token(user: User, tenant: Tenant) -> str:

@@ -57,7 +57,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 # ─── Tenant Context Middleware ────────────────────────────────
 
 # Paths that don't require auth
-_PUBLIC_PREFIXES = ("/health", "/auth/", "/docs", "/openapi", "/redoc", "/metrics")
+_PUBLIC_PREFIXES = (
+    "/health", "/metrics",
+    "/docs", "/openapi", "/redoc",
+    "/auth/",            # fallback for bare /auth/ mounts
+    "/api/v1/auth/",     # actual mounted path for register + login
+)
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
