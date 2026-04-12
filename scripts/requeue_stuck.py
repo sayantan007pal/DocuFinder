@@ -24,9 +24,10 @@ async def main():
     print("Connecting to MongoDB...")
     await init_db()
 
-    # Find all documents stuck in 'queued' status
-    stuck = await DocRecord.find(DocRecord.status == "queued").to_list()
-    print(f"Found {len(stuck)} stuck document(s) with status='queued'")
+    # Find all documents stuck in 'queued' or 'processing' status
+    from beanie.operators import In
+    stuck = await DocRecord.find(In(DocRecord.status, ["queued", "processing"])).to_list()
+    print(f"Found {len(stuck)} stuck document(s) with status='queued' or 'processing'")
 
     if not stuck:
         print("Nothing to requeue. Exiting.")
@@ -37,6 +38,10 @@ async def main():
 
     for doc in stuck:
         try:
+            # Reset status to queued before requeueing
+            doc.status = "queued"
+            await doc.save()
+
             # Dispatch Celery task
             task = ingest_document_task.apply_async(
                 args=[doc.storage_path, str(doc.id), str(doc.tenant_id)],

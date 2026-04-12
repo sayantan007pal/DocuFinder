@@ -32,9 +32,9 @@ ROUTING_TABLE: dict[tuple, ParserConfig] = {
     ("application/pdf", PDFType.SCANNED):
         ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", True, 2,
                      llamaparse_tier="agentic"),
-    # COMPLEX_LAYOUT: tables & charts need hi_res
+    # COMPLEX_LAYOUT: use fast for speed (hi_res optional for OCR-heavy docs)
     ("application/pdf", PDFType.COMPLEX_LAYOUT):
-        ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", False, 2,
+        ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 2,
                      llamaparse_tier="cost_effective"),
     # MIXED: balance speed and OCR capability
     ("application/pdf", PDFType.MIXED):
