@@ -67,10 +67,10 @@ client = Valkey.from_url("valkey://localhost:6379")
 ### 1.3 Chunking Strategy — Research Verdict 2025
 
 🔬 **Current industry consensus (2025–2026):**
-- `SentenceSplitter` at **512 tokens / 10–15% overlap** remains the recommended baseline (confirmed by NVIDIA NeMo Retriever benchmarks, Chroma research, Vecta Feb 2026 study)
+- **Recursive 512-token splitting ranked #1** in Vecta's Feb 2026 benchmark at **69% accuracy** vs SentenceSplitter at 64% vs Semantic at 54%
+- `SentenceSplitter` at 512 tokens / 10–15% overlap remains a solid baseline (per NVIDIA NeMo Retriever benchmarks, Chroma research)
 - Semantic chunking improves recall by 2–9% but requires embedding every sentence at parse time (expensive at 100K docs)
-- Recursive 512-token splitting ranked #1 in Vecta's 2026 benchmark at 69% accuracy vs semantic at 54%
-- **Decision:** Keep `SentenceSplitter(chunk_size=512, chunk_overlap=50)` as default. Expose `SemanticSplitterNodeParser` as opt-in via `CHUNKING_STRATEGY=semantic` env var.
+- **Decision:** Use `RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)` as **default** (Vecta 2026 winner). Expose `SentenceSplitter` via `CHUNKING_STRATEGY=sentence` and `SemanticSplitterNodeParser` via `CHUNKING_STRATEGY=semantic` as opt-in alternatives.
 
 ### 1.4 LLM — Gemma 4 via Ollama
 
@@ -112,16 +112,16 @@ MongoDB replaces PostgreSQL for all metadata, tenant registry, document status, 
 
 LlamaCloud (at `developers.llamaindex.ai/python/cloud/`) provides cloud-hosted versions of:
 
-| LlamaCloud Service | Self-hosted Equivalent | Swap env var |
-|-------------------|----------------------|--------------|
-| `LlamaParse` — cloud OCR parsing | Unstructured.io + LiteParse | `PARSER_PROVIDER` |
-| `LiteParse` — local fast parse | Already local | built-in |
-| `LlamaExtract` — structured extraction | Custom Pydantic + Ollama extraction | `EXTRACT_PROVIDER` |
-| `LlamaSplit` — split bundled PDFs | Custom page range detection | `SPLIT_PROVIDER` |
-| `LlamaClassify` — doc classification | Custom Ollama classifier | `CLASSIFY_PROVIDER` |
-| `LlamaIndex Cloud Index` — managed RAG index | Local Qdrant + LlamaIndex | `INDEX_PROVIDER` |
-| `LlamaAgents` — deployed agents | Local LlamaIndex Workflows | `AGENT_PROVIDER` |
-| `LlamaSheets` — spreadsheet extraction | Unstructured table extraction | `SHEETS_PROVIDER` |
+| LlamaCloud Service | Self-hosted Equivalent | Swap env var | Details |
+|-------------------|----------------------|--------------|---------|
+| `LlamaParse` — cloud OCR parsing | Unstructured.io + LiteParse | `PARSER_PROVIDER` | Tiers: fast/cost_effective/agentic/agentic_plus |
+| `LiteParse` — local fast parse | Already local | built-in | ~6s/doc for text-dense PDFs |
+| `LlamaExtract` — structured extraction | Custom Pydantic + Ollama extraction | `EXTRACT_PROVIDER` | Schema-based data extraction |
+| `LlamaSplit` — split bundled PDFs | Custom page range detection | `SPLIT_PROVIDER` | Split invoice decks, contract batches |
+| `LlamaClassify` — doc classification | Custom Ollama classifier | `CLASSIFY_PROVIDER` | Categories configurable via env var |
+| `LlamaIndex Cloud Index` — managed RAG index | Local Qdrant + LlamaIndex | `INDEX_PROVIDER` | ⚠️ Data leaves infrastructure |
+| `LlamaAgents` — deployed agents | Local LlamaIndex Workflows | `AGENT_PROVIDER` | Multi-step doc processing |
+| `LlamaSheets` — table/spreadsheet extraction | PyMuPDF + Unstructured tables | `SHEETS_PROVIDER` | See Section 13.5 for full impl |
 
 All swaps are controlled by environment variables. Zero code changes required.
 
@@ -179,9 +179,9 @@ class ParserProvider(str, Enum):
     LLAMAPARSE = "llamaparse"       # LlamaCloud cloud API
 
 class ChunkingStrategy(str, Enum):
-    SENTENCE = "sentence"           # default: SentenceSplitter 512t
-    SEMANTIC = "semantic"           # SemanticSplitterNodeParser (expensive)
-    RECURSIVE = "recursive"         # RecursiveCharacterTextSplitter fallback
+    RECURSIVE = "recursive"         # default: RecursiveCharacterTextSplitter 512t (Vecta 2026 winner at 69%)
+    SENTENCE = "sentence"           # SentenceSplitter 512t (fallback option)
+    SEMANTIC = "semantic"           # SemanticSplitterNodeParser (expensive, 2x memory)
 
 class LLMProvider(str, Enum):
     OLLAMA = "ollama"               # default: Gemma 4 local
@@ -210,6 +210,10 @@ class VirusScanProvider(str, Enum):
 class EmbeddingProvider(str, Enum):
     LOCAL = "local"                 # CPU embedding in-process
     GPU_WORKER = "gpu_worker"       # Remote GPU gRPC service
+
+class SheetsProvider(str, Enum):
+    LOCAL = "local"                 # PyMuPDF + Unstructured table extraction
+    LLAMASHEETS = "llamasheets"     # LlamaCloud LlamaSheets API
 ```
 
 ### [PROMPT] — Section 3 — Provider Factory
@@ -232,10 +236,15 @@ Factory functions (each cached with @lru_cache):
 
 2. get_chunker(strategy: ChunkingStrategy | None = None) -> TransformComponent
    Returns:
-   - SentenceSplitter(chunk_size=512, chunk_overlap=50) if CHUNKING_STRATEGY=sentence (default)
+   - LangchainNodeParser(RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50))
+     if CHUNKING_STRATEGY=recursive (default) — Vecta 2026 benchmark winner at 69%
+   - SentenceSplitter(chunk_size=512, chunk_overlap=50) if CHUNKING_STRATEGY=sentence
    - SemanticSplitterNodeParser(embed_model=get_embed_model(),
        breakpoint_percentile_threshold=90) if CHUNKING_STRATEGY=semantic
-   Note: SemanticSplitterNodeParser needs the embed model, load lazily.
+   Note: RecursiveCharacterTextSplitter uses LangChain via LangchainNodeParser wrapper.
+         SemanticSplitterNodeParser needs the embed model, load lazily.
+   Import: from langchain_text_splitters import RecursiveCharacterTextSplitter
+           from llama_index.core.node_parser import LangchainNodeParser
 
 3. get_llm(provider: LLMProvider | None = None) -> LLM
    Returns:
@@ -250,6 +259,13 @@ Factory functions (each cached with @lru_cache):
 
 5. get_index_provider() -> str  ("local_qdrant" | "llamacloud")
    Returns the current INDEX_PROVIDER setting.
+
+6. get_sheet_extractor(provider: SheetsProvider | None = None) -> BaseSheetExtractor
+   Returns:
+   - LocalSheetExtractor() if SHEETS_PROVIDER=local (default)
+     Uses PyMuPDF page.find_tables() for PDF, python-docx for DOCX
+   - LlamaSheetsExtractor() if SHEETS_PROVIDER=llamasheets
+     (requires LLAMA_CLOUD_API_KEY, raises ConfigError if missing)
 
 All functions read from Settings (pydantic-settings). If a required env var is
 missing for a cloud provider, raise a clear ConfigError with the missing var name.
@@ -486,7 +502,7 @@ pyproject.toml core deps:
   # Parsing (LlamaCloud upgrade — set PARSER_PROVIDER=llamaparse to activate)
   LLAMA_CLOUD_API_KEY=
   # Chunking
-  CHUNKING_STRATEGY=sentence
+  CHUNKING_STRATEGY=recursive             # default: RecursiveCharacterTextSplitter (Vecta 2026 winner at 69%)
   # LLM
   LLM_PROVIDER=ollama
   # Index
@@ -501,6 +517,17 @@ pyproject.toml core deps:
   # === PARSING ROUTER (Section 8.5) ===
   ENABLE_PDF_CLASSIFICATION=true
   UNSTRUCTURED_SCALE=4                  # Number of Unstructured containers
+  
+  # === PER-TYPE PARSER OVERRIDES (optional — override ROUTING_TABLE defaults) ===
+  # PARSER_TEXT_DENSE=liteparse         # Override for text-dense PDFs (default: liteparse)
+  # PARSER_SCANNED=unstructured         # Override for scanned PDFs (default: unstructured)
+  # PARSER_COMPLEX=llamaparse           # Override for complex layouts (default: unstructured)
+  # PARSER_MIXED=unstructured           # Override for mixed content (default: unstructured)
+  # PARSER_DOCX=unstructured            # Override for DOCX files (default: unstructured)
+
+  # === TABLE/SPREADSHEET EXTRACTION (Section 13.5) ===
+  SHEETS_PROVIDER=local                 # local | llamasheets
+  # LlamaSheets cloud requires LLAMA_CLOUD_API_KEY to be set
 
   # === VIRUS SCANNING (Section 8.6) ===
   ENABLE_VIRUS_SCAN=false               # true for high-security (adds ~200ms latency)
@@ -514,8 +541,9 @@ pyproject.toml core deps:
 
   # === CHUNKING ===
   # ⚠️ semantic requires 2x memory per worker (embed model loaded during chunking)
-  # CHUNKING_STRATEGY=sentence          # default: production-safe
-  # CHUNKING_STRATEGY=semantic          # optional: enable with sufficient RAM
+  CHUNKING_STRATEGY=recursive             # default: RecursiveCharacterTextSplitter (Vecta 2026 winner 69%)
+  # CHUNKING_STRATEGY=sentence            # alternative: SentenceSplitter 512t
+  # CHUNKING_STRATEGY=semantic            # optional: enable with sufficient RAM (expensive)
 
   # === BACKUP - S3/MinIO (Section 15.5) ===
   BACKUP_DESTINATION=s3                 # local | s3
@@ -1003,32 +1031,77 @@ Write the document classification and routing system.
 2. src/ingestion/router.py — Intelligent Parser Router
    Routes documents to optimal parser based on classification.
    
+   **Per-type env var overrides** (optional — override ROUTING_TABLE defaults):
+   ```bash
+   PARSER_TEXT_DENSE=liteparse      # Override for text-dense PDFs
+   PARSER_SCANNED=unstructured      # Override for scanned PDFs
+   PARSER_COMPLEX=llamaparse        # Override for complex layouts (tables/charts)
+   PARSER_MIXED=unstructured        # Override for mixed content
+   PARSER_DOCX=unstructured         # Override for DOCX files
+   ```
+   
    @dataclass
    class ParserConfig:
      provider: ParserProvider
      strategy: str  # "fast" | "hi_res"
      ocr_enabled: bool
      priority: int  # 1=high, 3=low
+     llamaparse_tier: str | None = None  # fast|cost_effective|agentic|agentic_plus
    
+   # Default routing table — overridden by PARSER_* env vars if set
    ROUTING_TABLE = {
      # (mime_type, pdf_type) -> ParserConfig
+     # TEXT_DENSE: fast extraction, no OCR needed
      ("application/pdf", PDFType.TEXT_DENSE): 
        ParserConfig(ParserProvider.LITEPARSE, "fast", False, 1),
+     # SCANNED: requires OCR with hi_res for accuracy
      ("application/pdf", PDFType.SCANNED): 
-       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", True, 2),
+       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", True, 2,
+                    llamaparse_tier="agentic"),  # If using LlamaParse: 10 credits/page
+     # COMPLEX_LAYOUT: tables & charts need hi_res
      ("application/pdf", PDFType.COMPLEX_LAYOUT): 
-       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", False, 2),
+       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", False, 2,
+                    llamaparse_tier="cost_effective"),  # If using LlamaParse: 3 credits/page
+     # MIXED: balance speed and OCR capability
      ("application/pdf", PDFType.MIXED): 
-       ParserConfig(ParserProvider.UNSTRUCTURED, "fast", True, 2),
+       ParserConfig(ParserProvider.UNSTRUCTURED, "fast", True, 2,
+                    llamaparse_tier="cost_effective"),
+     # DOCX: always fast, no OCR
      ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", None):
        ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 1),
    }
+   
+   def get_parser_override(pdf_type: PDFType | None) -> ParserProvider | None:
+     """Check for per-type env var override."""
+     overrides = {
+       PDFType.TEXT_DENSE: settings.parser_text_dense,
+       PDFType.SCANNED: settings.parser_scanned,
+       PDFType.COMPLEX_LAYOUT: settings.parser_complex,
+       PDFType.MIXED: settings.parser_mixed,
+     }
+     return overrides.get(pdf_type) if pdf_type else settings.parser_docx
    
    def route_to_parser(file_path: str, mime_type: str) -> ParserConfig:
      pdf_type = None
      if mime_type == "application/pdf":
        pdf_type = classify_pdf(file_path)
        log.info("pdf_classified", file=file_path, type=pdf_type)
+     
+     # Check for per-type env var override first
+     override_provider = get_parser_override(pdf_type)
+     if override_provider:
+       log.info("parser_override_applied", type=pdf_type, provider=override_provider)
+       # Get base config and replace provider
+       key = (mime_type, pdf_type)
+       base_config = ROUTING_TABLE.get(key, 
+         ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 3))
+       return ParserConfig(
+         provider=override_provider,
+         strategy="hi_res" if override_provider == ParserProvider.LLAMAPARSE else base_config.strategy,
+         ocr_enabled=base_config.ocr_enabled,
+         priority=1,
+         llamaparse_tier=base_config.llamaparse_tier
+       )
      
      key = (mime_type, pdf_type)
      if key in ROUTING_TABLE:
@@ -1693,6 +1766,659 @@ class LlamaParseParser(BaseDocumentParser):
 
 ---
 
+## Section 13.5 — LlamaSheets Implementation (Table/Spreadsheet Extraction)
+
+Full implementation for extracting tables from PDFs and DOCX files.
+Self-hosted default via PyMuPDF + Unstructured. LlamaCloud swap via `SHEETS_PROVIDER=llamasheets`.
+
+### [PROMPT] — Phase 9a — Sheet Extractor Abstraction
+
+```
+Write the table/spreadsheet extraction abstraction layer.
+
+1. src/extraction/sheets.py — Base Abstraction
+   
+   from abc import ABC, abstractmethod
+   from dataclasses import dataclass, field
+   from datetime import datetime
+   from enum import Enum
+   
+   class TableConfidence(str, Enum):
+     HIGH = "high"        # >90% structured, clear headers
+     MEDIUM = "medium"    # 70-90% structured
+     LOW = "low"          # <70%, may need manual review
+   
+   @dataclass
+   class ExtractedTable:
+     \"\"\"Represents a single extracted table from a document.\"\"\"
+     page_number: int
+     table_index: int          # Multiple tables per page (0-indexed)
+     headers: list[str]
+     rows: list[list[str]]     # Each row is a list of cell values
+     row_count: int = field(init=False)
+     column_count: int = field(init=False)
+     bbox: tuple[float, float, float, float] | None = None  # x0, y0, x1, y1
+     confidence: TableConfidence = TableConfidence.MEDIUM
+     source_parser: str = "unknown"
+     extracted_at: datetime = field(default_factory=datetime.utcnow)
+     
+     def __post_init__(self):
+       self.row_count = len(self.rows)
+       self.column_count = len(self.headers) if self.headers else (
+         len(self.rows[0]) if self.rows else 0
+       )
+     
+     def to_csv(self) -> str:
+       \"\"\"Export table as CSV string.\"\"\"
+       import csv
+       import io
+       output = io.StringIO()
+       writer = csv.writer(output)
+       if self.headers:
+         writer.writerow(self.headers)
+       writer.writerows(self.rows)
+       return output.getvalue()
+     
+     def to_markdown(self) -> str:
+       \"\"\"Export table as Markdown.\"\"\"
+       if not self.headers and not self.rows:
+         return ""
+       lines = []
+       if self.headers:
+         lines.append("| " + " | ".join(self.headers) + " |")
+         lines.append("|" + "|".join(["---"] * len(self.headers)) + "|")
+       for row in self.rows:
+         lines.append("| " + " | ".join(str(c) for c in row) + " |")
+       return "\n".join(lines)
+     
+     def to_dict(self) -> dict:
+       \"\"\"Export as JSON-serializable dict.\"\"\"
+       return {
+         "page_number": self.page_number,
+         "table_index": self.table_index,
+         "headers": self.headers,
+         "rows": self.rows,
+         "row_count": self.row_count,
+         "column_count": self.column_count,
+         "confidence": self.confidence.value,
+         "source_parser": self.source_parser,
+       }
+   
+   @dataclass
+   class ExtractionResult:
+     \"\"\"Result of table extraction from a document.\"\"\"
+     doc_id: str
+     tenant_id: str
+     filename: str
+     tables: list[ExtractedTable]
+     total_tables: int = field(init=False)
+     pages_with_tables: list[int] = field(default_factory=list)
+     extraction_time_ms: float = 0
+     provider_used: str = "unknown"
+     
+     def __post_init__(self):
+       self.total_tables = len(self.tables)
+       self.pages_with_tables = list(set(t.page_number for t in self.tables))
+   
+   class BaseSheetExtractor(ABC):
+     \"\"\"Abstract base class for table extraction providers.\"\"\"
+     
+     @abstractmethod
+     async def extract_tables(
+       self, 
+       file_path: str, 
+       doc_id: str, 
+       tenant_id: str,
+       page_numbers: list[int] | None = None  # None = all pages
+     ) -> ExtractionResult:
+       \"\"\"Extract all tables from a document.\"\"\"
+       ...
+     
+     @abstractmethod
+     async def health_check(self) -> bool:
+       \"\"\"Check if the extractor is healthy.\"\"\"
+       ...
+```
+
+### [PROMPT] — Phase 9b — Local Sheet Extractor (PyMuPDF + Unstructured)
+
+```
+Write the local table extraction implementation.
+
+2. src/extraction/local_sheets.py — LocalSheetExtractor
+   Uses PyMuPDF for fast extraction, falls back to Unstructured for complex tables.
+   
+   import fitz  # PyMuPDF
+   import time
+   from pathlib import Path
+   from src.extraction.sheets import (
+     BaseSheetExtractor, ExtractedTable, ExtractionResult, TableConfidence
+   )
+   
+   class LocalSheetExtractor(BaseSheetExtractor):
+     \"\"\"
+     Local table extraction using PyMuPDF (primary) + Unstructured (fallback).
+     
+     Strategy:
+     1. Try PyMuPDF page.find_tables() first — fast, works for simple tables
+     2. If table detection confidence is low, fallback to Unstructured hi_res
+     3. For DOCX files, use python-docx directly
+     \"\"\"
+     
+     def __init__(self):
+       self.unstructured_url = get_settings().unstructured_url
+     
+     async def extract_tables(
+       self, file_path: str, doc_id: str, tenant_id: str,
+       page_numbers: list[int] | None = None
+     ) -> ExtractionResult:
+       t0 = time.monotonic()
+       path = Path(file_path)
+       
+       if path.suffix.lower() == ".pdf":
+         tables = await self._extract_pdf_tables(file_path, page_numbers)
+       elif path.suffix.lower() in (".docx", ".doc"):
+         tables = await self._extract_docx_tables(file_path)
+       else:
+         raise ValueError(f"Unsupported file type: {path.suffix}")
+       
+       return ExtractionResult(
+         doc_id=doc_id,
+         tenant_id=tenant_id,
+         filename=path.name,
+         tables=tables,
+         extraction_time_ms=(time.monotonic() - t0) * 1000,
+         provider_used="local_pymupdf"
+       )
+     
+     async def _extract_pdf_tables(
+       self, file_path: str, page_numbers: list[int] | None
+     ) -> list[ExtractedTable]:
+       tables = []
+       doc = fitz.open(file_path)
+       
+       pages_to_process = page_numbers or range(len(doc))
+       
+       for page_idx in pages_to_process:
+         if page_idx >= len(doc):
+           continue
+         page = doc[page_idx]
+         
+         # PyMuPDF table detection
+         page_tables = page.find_tables()
+         
+         for table_idx, table in enumerate(page_tables.tables):
+           # Extract table data
+           data = table.extract()
+           if not data:
+             continue
+           
+           # First row as headers (heuristic: if it looks like headers)
+           headers = data[0] if data else []
+           rows = data[1:] if len(data) > 1 else []
+           
+           # Confidence based on table structure
+           confidence = self._assess_confidence(headers, rows, table)
+           
+           tables.append(ExtractedTable(
+             page_number=page_idx + 1,  # 1-indexed for user display
+             table_index=table_idx,
+             headers=[str(h) if h else "" for h in headers],
+             rows=[[str(c) if c else "" for c in row] for row in rows],
+             bbox=table.bbox if hasattr(table, 'bbox') else None,
+             confidence=confidence,
+             source_parser="pymupdf"
+           ))
+       
+       doc.close()
+       
+       # Fallback to Unstructured for low-confidence or no tables found
+       if not tables or all(t.confidence == TableConfidence.LOW for t in tables):
+         log.info("pymupdf_low_confidence_fallback", file=file_path)
+         unstructured_tables = await self._extract_via_unstructured(file_path, page_numbers)
+         if unstructured_tables:
+           return unstructured_tables
+       
+       return tables
+     
+     async def _extract_docx_tables(self, file_path: str) -> list[ExtractedTable]:
+       \"\"\"Extract tables from DOCX using python-docx.\"\"\"
+       from docx import Document as DocxDocument
+       tables = []
+       
+       doc = DocxDocument(file_path)
+       
+       for table_idx, table in enumerate(doc.tables):
+         rows_data = []
+         for row in table.rows:
+           row_data = [cell.text.strip() for cell in row.cells]
+           rows_data.append(row_data)
+         
+         if not rows_data:
+           continue
+         
+         headers = rows_data[0] if rows_data else []
+         rows = rows_data[1:] if len(rows_data) > 1 else []
+         
+         tables.append(ExtractedTable(
+           page_number=1,  # DOCX doesn't have clear page boundaries
+           table_index=table_idx,
+           headers=headers,
+           rows=rows,
+           confidence=TableConfidence.HIGH,  # DOCX tables are well-structured
+           source_parser="python_docx"
+         ))
+       
+       return tables
+     
+     async def _extract_via_unstructured(
+       self, file_path: str, page_numbers: list[int] | None
+     ) -> list[ExtractedTable]:
+       \"\"\"Fallback extraction via Unstructured API.\"\"\"
+       import httpx
+       
+       async with httpx.AsyncClient(timeout=120) as client:
+         with open(file_path, "rb") as f:
+           response = await client.post(
+             f"{self.unstructured_url}/general/v0/general",
+             files={"files": (Path(file_path).name, f, "application/octet-stream")},
+             data={"strategy": "hi_res", "include_metadata": "true"}
+           )
+       
+       if response.status_code != 200:
+         log.error("unstructured_table_extraction_failed", status=response.status_code)
+         return []
+       
+       elements = response.json()
+       tables = []
+       table_idx = 0
+       
+       for element in elements:
+         if element.get("type") != "Table":
+           continue
+         
+         # Parse Unstructured table format
+         text = element.get("text", "")
+         metadata = element.get("metadata", {})
+         page_num = metadata.get("page_number", 1)
+         
+         if page_numbers and page_num not in page_numbers:
+           continue
+         
+         # Unstructured returns tables as text — parse into rows/cols
+         # Simple heuristic: split by newline for rows, by tab/| for columns
+         lines = text.strip().split("\n")
+         if not lines:
+           continue
+         
+         # Detect delimiter
+         delimiter = "\t" if "\t" in lines[0] else "|" if "|" in lines[0] else ","
+         
+         parsed_rows = []
+         for line in lines:
+           cells = [c.strip() for c in line.split(delimiter) if c.strip()]
+           if cells:
+             parsed_rows.append(cells)
+         
+         if parsed_rows:
+           tables.append(ExtractedTable(
+             page_number=page_num,
+             table_index=table_idx,
+             headers=parsed_rows[0] if parsed_rows else [],
+             rows=parsed_rows[1:] if len(parsed_rows) > 1 else [],
+             confidence=TableConfidence.MEDIUM,
+             source_parser="unstructured"
+           ))
+           table_idx += 1
+       
+       return tables
+     
+     def _assess_confidence(self, headers, rows, table) -> TableConfidence:
+       \"\"\"Assess extraction confidence based on table structure.\"\"\"
+       # High: clear headers, consistent column count, no empty cells
+       # Medium: some structure issues
+       # Low: many empty cells, inconsistent columns
+       
+       if not headers or not rows:
+         return TableConfidence.LOW
+       
+       header_count = len(headers)
+       consistent_cols = all(len(row) == header_count for row in rows)
+       empty_cells = sum(1 for row in rows for cell in row if not str(cell).strip())
+       total_cells = sum(len(row) for row in rows)
+       empty_ratio = empty_cells / max(total_cells, 1)
+       
+       if consistent_cols and empty_ratio < 0.1:
+         return TableConfidence.HIGH
+       elif consistent_cols or empty_ratio < 0.3:
+         return TableConfidence.MEDIUM
+       else:
+         return TableConfidence.LOW
+     
+     async def health_check(self) -> bool:
+       return True  # Local extraction always available
+```
+
+### [PROMPT] — Phase 9c — LlamaSheets Cloud Extractor
+
+```
+Write the LlamaCloud LlamaSheets implementation.
+
+3. src/extraction/llamasheets.py — LlamaSheetsExtractor
+   [SWAP] Activated when SHEETS_PROVIDER=llamasheets and LLAMA_CLOUD_API_KEY set.
+   
+   import time
+   from pathlib import Path
+   from src.extraction.sheets import (
+     BaseSheetExtractor, ExtractedTable, ExtractionResult, TableConfidence
+   )
+   from src.core.config import get_settings
+   
+   class LlamaSheetsExtractor(BaseSheetExtractor):
+     \"\"\"
+     LlamaCloud LlamaSheets extraction.
+     Cloud-based table extraction with high accuracy for complex tables.
+     
+     Pricing (as of 2026):
+     - Simple tables: 1 credit/page
+     - Complex tables (merged cells, nested): 3 credits/page
+     - Spreadsheet reconstruction: 5 credits/page
+     \"\"\"
+     
+     def __init__(self):
+       settings = get_settings()
+       if not settings.llama_cloud_api_key:
+         raise ConfigError("LLAMA_CLOUD_API_KEY required for LlamaSheets")
+       
+       self.api_key = settings.llama_cloud_api_key
+       self.base_url = "https://api.cloud.llamaindex.ai/v1"
+     
+     async def extract_tables(
+       self, file_path: str, doc_id: str, tenant_id: str,
+       page_numbers: list[int] | None = None
+     ) -> ExtractionResult:
+       import httpx
+       
+       t0 = time.monotonic()
+       path = Path(file_path)
+       
+       async with httpx.AsyncClient(timeout=300) as client:
+         # Upload file to LlamaSheets
+         with open(file_path, "rb") as f:
+           upload_response = await client.post(
+             f"{self.base_url}/sheets/extract",
+             headers={"Authorization": f"Bearer {self.api_key}"},
+             files={"file": (path.name, f, "application/octet-stream")},
+             data={
+               "mode": "tables",  # "tables" | "full_spreadsheet"
+               "output_format": "structured",
+               "page_numbers": ",".join(map(str, page_numbers)) if page_numbers else ""
+             }
+           )
+       
+       if upload_response.status_code != 200:
+         log.error("llamasheets_extraction_failed", 
+                   status=upload_response.status_code,
+                   detail=upload_response.text)
+         raise ExtractionError(f"LlamaSheets API error: {upload_response.status_code}")
+       
+       result = upload_response.json()
+       
+       tables = []
+       for idx, table_data in enumerate(result.get("tables", [])):
+         tables.append(ExtractedTable(
+           page_number=table_data.get("page", 1),
+           table_index=table_data.get("index", idx),
+           headers=table_data.get("headers", []),
+           rows=table_data.get("rows", []),
+           bbox=tuple(table_data["bbox"]) if table_data.get("bbox") else None,
+           confidence=TableConfidence(table_data.get("confidence", "medium")),
+           source_parser="llamasheets"
+         ))
+       
+       return ExtractionResult(
+         doc_id=doc_id,
+         tenant_id=tenant_id,
+         filename=path.name,
+         tables=tables,
+         extraction_time_ms=(time.monotonic() - t0) * 1000,
+         provider_used="llamasheets"
+       )
+     
+     async def health_check(self) -> bool:
+       \"\"\"Verify LlamaSheets API is accessible.\"\"\"
+       import httpx
+       try:
+         async with httpx.AsyncClient(timeout=10) as client:
+           response = await client.get(
+             f"{self.base_url}/health",
+             headers={"Authorization": f"Bearer {self.api_key}"}
+           )
+         return response.status_code == 200
+       except Exception:
+         return False
+```
+
+### [PROMPT] — Phase 9d — MongoDB Model + API Endpoints
+
+```
+Write the MongoDB model and FastAPI endpoints for table extraction.
+
+4. Add to src/models/db.py — ExtractedTableRecord
+   
+   class ExtractedTableRecord(Document):
+     \"\"\"
+     Cached extracted table for re-use without re-extraction.
+     Stored per-table (not per-document) for granular access.
+     \"\"\"
+     doc_id: PydanticObjectId
+     tenant_id: PydanticObjectId
+     page_number: int
+     table_index: int
+     headers: list[str]
+     rows: list[list[str]]
+     row_count: int
+     column_count: int
+     confidence: str          # "high" | "medium" | "low"
+     source_parser: str       # "pymupdf" | "unstructured" | "llamasheets"
+     extracted_at: datetime = Field(default_factory=datetime.utcnow)
+     
+     class Settings:
+       name = "extracted_tables"
+       indexes = [
+         IndexModel([("doc_id", 1), ("page_number", 1), ("table_index", 1)], unique=True),
+         IndexModel([("tenant_id", 1)]),
+         IndexModel([("extracted_at", 1)], expireAfterSeconds=60*60*24*90)  # 90-day TTL
+       ]
+
+5. src/api/routes/extract.py — Table Extraction Endpoints
+   
+   from fastapi import APIRouter, Depends, HTTPException, Query
+   from fastapi.responses import StreamingResponse
+   import io
+   
+   router = APIRouter(prefix="/extract", tags=["extraction"])
+   
+   @router.post("/tables/{doc_id}")
+   async def extract_tables(
+     doc_id: str,
+     page_numbers: list[int] | None = Query(None, description="Pages to extract (1-indexed)"),
+     force_refresh: bool = Query(False, description="Re-extract even if cached"),
+     current_user: tuple = Depends(get_current_user)
+   ):
+     \"\"\"
+     Extract tables from a document.
+     
+     Returns cached results if available, unless force_refresh=true.
+     \"\"\"
+     user, tenant_id = current_user
+     
+     # Verify document ownership
+     doc = await DocRecord.find_one(
+       DocRecord.id == ObjectId(doc_id),
+       DocRecord.tenant_id == ObjectId(tenant_id)
+     )
+     if not doc:
+       raise HTTPException(404, "Document not found")
+     if doc.status != "completed":
+       raise HTTPException(400, f"Document not yet processed: {doc.status}")
+     
+     # Check cache first (unless force_refresh)
+     if not force_refresh:
+       cached = await ExtractedTableRecord.find(
+         ExtractedTableRecord.doc_id == ObjectId(doc_id),
+         ExtractedTableRecord.tenant_id == ObjectId(tenant_id)
+       ).to_list()
+       if cached:
+         # Filter by page_numbers if specified
+         if page_numbers:
+           cached = [t for t in cached if t.page_number in page_numbers]
+         return {
+           "doc_id": doc_id,
+           "tables": [t.dict(exclude={"id"}) for t in cached],
+           "cached": True,
+           "provider_used": cached[0].source_parser if cached else None
+         }
+     
+     # Extract tables
+     extractor = get_sheet_extractor()
+     result = await extractor.extract_tables(
+       file_path=doc.storage_path,
+       doc_id=doc_id,
+       tenant_id=tenant_id,
+       page_numbers=page_numbers
+     )
+     
+     # Cache results (delete old, insert new)
+     await ExtractedTableRecord.find(
+       ExtractedTableRecord.doc_id == ObjectId(doc_id)
+     ).delete()
+     
+     for table in result.tables:
+       await ExtractedTableRecord(
+         doc_id=ObjectId(doc_id),
+         tenant_id=ObjectId(tenant_id),
+         page_number=table.page_number,
+         table_index=table.table_index,
+         headers=table.headers,
+         rows=table.rows,
+         row_count=table.row_count,
+         column_count=table.column_count,
+         confidence=table.confidence.value,
+         source_parser=table.source_parser
+       ).insert()
+     
+     return {
+       "doc_id": doc_id,
+       "tables": [t.to_dict() for t in result.tables],
+       "cached": False,
+       "extraction_time_ms": result.extraction_time_ms,
+       "provider_used": result.provider_used
+     }
+   
+   @router.get("/tables/{doc_id}/export")
+   async def export_tables(
+     doc_id: str,
+     format: str = Query("csv", regex="^(csv|json|markdown)$"),
+     table_index: int | None = Query(None, description="Export specific table only"),
+     current_user: tuple = Depends(get_current_user)
+   ):
+     \"\"\"Export extracted tables in CSV, JSON, or Markdown format.\"\"\"
+     user, tenant_id = current_user
+     
+     tables = await ExtractedTableRecord.find(
+       ExtractedTableRecord.doc_id == ObjectId(doc_id),
+       ExtractedTableRecord.tenant_id == ObjectId(tenant_id)
+     ).to_list()
+     
+     if not tables:
+       raise HTTPException(404, "No tables found. Run POST /extract/tables/{doc_id} first.")
+     
+     if table_index is not None:
+       tables = [t for t in tables if t.table_index == table_index]
+       if not tables:
+         raise HTTPException(404, f"Table index {table_index} not found")
+     
+     if format == "json":
+       return [t.dict(exclude={"id"}) for t in tables]
+     
+     elif format == "csv":
+       output = io.StringIO()
+       for table in tables:
+         output.write(f"# Page {table.page_number}, Table {table.table_index}\n")
+         # Write headers
+         import csv
+         writer = csv.writer(output)
+         writer.writerow(table.headers)
+         writer.writerows(table.rows)
+         output.write("\n")
+       
+       return StreamingResponse(
+         io.BytesIO(output.getvalue().encode()),
+         media_type="text/csv",
+         headers={"Content-Disposition": f"attachment; filename=tables_{doc_id}.csv"}
+       )
+     
+     elif format == "markdown":
+       md_output = []
+       for table in tables:
+         md_output.append(f"## Page {table.page_number}, Table {table.table_index}\n")
+         et = ExtractedTable(
+           page_number=table.page_number,
+           table_index=table.table_index,
+           headers=table.headers,
+           rows=table.rows
+         )
+         md_output.append(et.to_markdown())
+         md_output.append("\n")
+       
+       return StreamingResponse(
+         io.BytesIO("\n".join(md_output).encode()),
+         media_type="text/markdown",
+         headers={"Content-Disposition": f"attachment; filename=tables_{doc_id}.md"}
+       )
+   
+   @router.get("/tables/{doc_id}/summary")
+   async def get_tables_summary(
+     doc_id: str,
+     current_user: tuple = Depends(get_current_user)
+   ):
+     \"\"\"Get summary of extracted tables without full data.\"\"\"
+     user, tenant_id = current_user
+     
+     tables = await ExtractedTableRecord.find(
+       ExtractedTableRecord.doc_id == ObjectId(doc_id),
+       ExtractedTableRecord.tenant_id == ObjectId(tenant_id)
+     ).to_list()
+     
+     return {
+       "doc_id": doc_id,
+       "total_tables": len(tables),
+       "pages_with_tables": list(set(t.page_number for t in tables)),
+       "tables": [
+         {
+           "page": t.page_number,
+           "index": t.table_index,
+           "rows": t.row_count,
+           "columns": t.column_count,
+           "confidence": t.confidence
+         }
+         for t in tables
+       ]
+     }
+```
+
+### [CHECK] Phase 9 (LlamaSheets) complete when:
+- [ ] `LocalSheetExtractor` extracts tables from PDF with PyMuPDF
+- [ ] `LocalSheetExtractor` falls back to Unstructured for complex tables
+- [ ] `LlamaSheetsExtractor` works with `SHEETS_PROVIDER=llamasheets` + API key
+- [ ] `POST /extract/tables/{doc_id}` returns extracted tables
+- [ ] `GET /extract/tables/{doc_id}/export?format=csv` downloads CSV
+- [ ] Tables cached in MongoDB with 90-day TTL
+- [ ] `/health` endpoint shows sheets provider status
+
+---
+
 ## Section 14 — Evaluation & Quality
 
 ### [PROMPT] — Phase 9 — RAGAS Eval with Local Gemma 4
@@ -2199,6 +2925,7 @@ pymupdf = "^1.24"         # fallback PDF reader
 ragas = "^0.2"
 langchain-ollama = "^0.2"
 langchain-huggingface = "^0.1"
+langchain-text-splitters = "^0.3"  # RecursiveCharacterTextSplitter for default chunking
 
 # Observability
 structlog = "^25.0"
@@ -2243,8 +2970,9 @@ UNSTRUCTURED_STRATEGY=fast     # fast | hi_res
 LLAMAPARSE_TIER=cost_effective # fast | cost_effective | agentic | agentic_plus
 
 # Chunking
-CHUNKING_STRATEGY=sentence     # default: SentenceSplitter 512t
-CHUNKING_STRATEGY=semantic     # SemanticSplitterNodeParser (expensive)
+CHUNKING_STRATEGY=recursive    # default: RecursiveCharacterTextSplitter 512t (Vecta 2026 winner at 69%)
+CHUNKING_STRATEGY=sentence     # SentenceSplitter 512t (alternative)
+CHUNKING_STRATEGY=semantic     # SemanticSplitterNodeParser (expensive, 2x memory)
 
 # LLM
 LLM_PROVIDER=ollama            # default: Gemma 4 local
@@ -2264,6 +2992,8 @@ CLASSIFY_PROVIDER=local        # default
 CLASSIFY_PROVIDER=llamaclassify# LlamaCloud classification
 AGENT_PROVIDER=local           # default: local Workflows
 AGENT_PROVIDER=llamaagents     # LlamaCloud Agents
+SHEETS_PROVIDER=local          # default: PyMuPDF + Unstructured tables
+SHEETS_PROVIDER=llamasheets    # LlamaCloud LlamaSheets extraction
 
 # Required for ANY LlamaCloud provider
 LLAMA_CLOUD_API_KEY=llx-...
@@ -2289,6 +3019,10 @@ LLAMA_CLOUD_API_KEY=llx-...
 | MinIO not accessible | Port 9000 conflict | Change ports in docker-compose |
 | Unstructured LB 502 | All parsing containers down | Check `docker compose logs unstructured-*` |
 | PDF misclassified | Edge case in classifier | Set `ENABLE_PDF_CLASSIFICATION=false` |
+| RecursiveCharacterTextSplitter not found | Missing langchain-text-splitters | `pip install langchain-text-splitters` |
+| LangchainNodeParser import error | Wrong import path | `from llama_index.core.node_parser import LangchainNodeParser` |
+| Table extraction empty | PDF has image-based tables | Use `SHEETS_PROVIDER=llamasheets` or Unstructured hi_res |
+| LlamaSheets auth failed | Missing or invalid API key | Check `LLAMA_CLOUD_API_KEY` env var |
 
 ---
 
@@ -2300,7 +3034,7 @@ Phase 1  → Config + MongoDB models + Valkey client
 Phase 2  → JWT auth + tenant middleware
 Phase 3  → Provider factory (Section 3) ← build this before parsers
 Phase 4a → Parser abstraction + Unstructured + LiteParse
-Phase 4b → IngestionPipeline (swappable chunker)
+Phase 4b → IngestionPipeline (swappable chunker with RECURSIVE default)
 Phase 4c → PDF classification + MIME-based routing (Section 8.5)
 Phase 4d → ClamAV virus scanning (Section 8.6) [optional]
 Phase 5  → Qdrant bootstrap (scripts/init_qdrant.py)
@@ -2308,6 +3042,7 @@ Phase 6  → Celery tasks (Valkey broker)
 Phase 7  → File watcher
 Phase 8  → Query engine + summarizer
 Phase 9  → FastAPI endpoints
+Phase 9a-d → LlamaSheets table extraction (Section 13.5)
 Phase 10 → RAGAS evaluation
 Phase 11 → Observability + hardening
 Phase 11b → S3/MinIO backup system (Section 15.5)
@@ -2317,4 +3052,5 @@ E1–E6   → Emergent capabilities
 ---
 
 *Generated: April 2026 · Stack: LlamaIndex 0.12, Qdrant 1.16, Gemma 4 (Ollama 0.20+),*  
-*Valkey 8 (valkey-py 6), MongoDB 8 (Motor 3, Beanie 1.26), Unstructured 0.15, LiteParse 0.1*
+*Valkey 8 (valkey-py 6), MongoDB 8 (Motor 3, Beanie 1.26), Unstructured 0.15, LiteParse 0.1,*  
+*LangChain Text Splitters 0.3 (RecursiveCharacterTextSplitter)*
