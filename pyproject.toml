@@ -26,6 +26,7 @@ dependencies = [
     # ── Task queue — VALKEY (not redis) ───────────────────────────
     "celery>=5.4",
     "valkey>=6.0",
+    "redis>=5.0",  # Required for redis:// transport URL
 
     # ── Database — MongoDB ────────────────────────────────────────
     "motor>=3.4",
