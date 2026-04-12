@@ -24,11 +24,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # Verify installations
 RUN python --version && node --version && npm --version
 
+# Install uv (10-100x faster than pip)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# Install uv for fast dependency installs
+# Copy dependency files first (better layer caching)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir uv && uv pip install --system -e .
+
+# Install dependencies with uv (much faster than pip)
+RUN uv pip install --system -e .
 
 COPY src/ src/
 COPY scripts/ scripts/

@@ -608,13 +608,24 @@ docker compose logs api --tail=50
 | Service | Port | Description |
 |---------|------|-------------|
 | `api` | 8001 | FastAPI backend |
-| `celery_worker` | — | Document ingestion workers |
+| `worker` | — | Celery document ingestion workers |
 | `mongodb` | 27017 | Document metadata store |
 | `valkey` | 6379 | Cache + Celery broker |
-| `unstructured` | 8000 | Advanced PDF/DOCX parsing API |
-| `nginx` | 80, 443 | Reverse proxy |
-| `clamav` | — | Optional virus scanner |
-| `minio` | 9000 | Object storage for large files |
+| `unstructured-1..4` | — | Advanced PDF/DOCX parsing API (4 instances) |
+| `unstructured-lb` | 8000 | Nginx load balancer for unstructured workers |
+| `minio` | 9002 (API), 9003 (console) | Object storage for large files |
+| `phoenix` | 6006 | Arize Phoenix OTEL tracing UI |
+| `flower` | 5555 | Celery task monitoring |
+| `clamav` | — | Optional virus scanner (Intel only, use `--profile clamav`) |
+
+> **Note for Apple Silicon (M1/M2/M3)**: ClamAV doesn't support ARM64. Start without it:
+> ```bash
+> docker compose up -d  # ClamAV excluded by default via profiles
+> ```
+> On Intel machines, enable ClamAV with:
+> ```bash
+> docker compose --profile clamav up -d
+> ```
 
 ---
 
@@ -797,6 +808,77 @@ python scripts/init_qdrant.py
 ### Celery fails with `daemonic processes are not allowed to have children`
 **Cause**: IngestionPipeline `num_workers>1` conflicts with Celery prefork  
 **Fix**: Already fixed — `num_workers=1` is now hardcoded in `pipeline.py`
+
+### Celery task fails with `ConnectError: unstructured-lb nodename not known`
+**Cause**: Celery worker running locally cannot resolve Docker-internal hostname `unstructured-lb`  
+**Fix**: Choose one approach:
+
+**Option A: Run Worker Inside Docker** *(recommended for consistency)*
+```bash
+docker-compose up -d
+docker-compose exec api celery -A src.ingestion.tasks worker --loglevel=INFO
+```
+
+**Option B: Run Unstructured Locally** *(lightweight dev)*
+```bash
+# Start local Unstructured container
+docker run -d -p 8000:8000 downloads.unstructured.io/unstructured-io/unstructured-api:latest
+
+# Override env and restart worker
+export UNSTRUCTURED_URL=http://localhost:8000
+celery -A src.ingestion.tasks worker --loglevel=INFO
+```
+
+### `docker-compose up` fails with `mher/flower:2: not found`
+**Cause**: The Flower image tag `2` doesn't exist on Docker Hub  
+**Fix**: Already fixed — uses `mher/flower:latest`. If using an older `docker-compose.yml`, update line 196:
+```yaml
+image: mher/flower:latest
+```
+Or skip optional services:
+```bash
+docker-compose up -d valkey mongodb unstructured-lb unstructured-1 api
+```
+
+### `docker compose up` fails with `no matching manifest for linux/arm64`
+**Cause**: ClamAV doesn't support Apple Silicon (ARM64)  
+**Fix**: Already fixed — ClamAV is moved to an optional profile. On Apple Silicon:
+```bash
+docker compose up -d  # ClamAV excluded automatically
+```
+On Intel machines, optionally include ClamAV:
+```bash
+docker compose --profile clamav up -d
+```
+
+### Unstructured containers stuck in `unhealthy` state
+**Cause**: Health check was using `curl` which isn't installed in the unstructured-api image  
+**Fix**: Already fixed — healthcheck now uses Python socket check:
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',8000)); s.close()\""]
+```
+
+### Unstructured containers keep restarting (exit code 0)
+**Cause**: Wrong image — `unstructured-io/unstructured` is the library, not the API server  
+**Fix**: Already fixed — uses `quay.io/unstructured-io/unstructured-api:latest`
+
+### Worker gets `FileNotFoundError` for uploaded files
+**Cause**: API and Worker containers don't share the same upload directory. `.env` sets `UPLOAD_DIR=/tmp/...` but Docker volumes mount at `/app/uploads`  
+**Fix**: Already fixed — `docker-compose.yml` now overrides `UPLOAD_DIR=/app/uploads` and `WATCH_ROOT=/app/watch_root` in the environment section.
+
+### Port 9000 already in use for MinIO
+**Cause**: Another service (often Portainer or SonarQube) is using port 9000  
+**Fix**: Already fixed — MinIO now uses ports 9002 (API) and 9003 (console):
+```yaml
+ports:
+  - "9002:9000"
+  - "9003:9001"
+```
+
+### `unstructured-lb` fails with `host not found in upstream`
+**Cause**: Nginx load balancer starts before unstructured workers are healthy  
+**Fix**: Already fixed — `unstructured-lb` now uses `depends_on` with `condition: service_healthy`
 
 ### liteparse returns `error: unknown option '--json'`
 **Cause**: Outdated liteparse CLI syntax  
