@@ -77,8 +77,9 @@ def get_vector_store(tenant_id: str):
         collection_name=settings.collection_name,
         enable_hybrid=True,
         fastembed_sparse_model="Qdrant/bm25",
-        sparse_vector_name="sparse",
-        dense_vector_name="dense",
+        # Vector names MUST match init_qdrant.py collection config
+        sparse_vector_name="text-sparse",
+        dense_vector_name="text-dense",
         payload_filter=payload_filter,
     )
 
