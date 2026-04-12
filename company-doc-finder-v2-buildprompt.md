@@ -198,6 +198,18 @@ class ExtractProvider(str, Enum):
 class AgentProvider(str, Enum):
     LOCAL = "local"                 # LlamaIndex Workflows local
     LLAMAAGENTS = "llamaagents"     # LlamaCloud LlamaAgents
+
+class BackupDestination(str, Enum):
+    LOCAL = "local"                 # /backups/ volume mount
+    S3 = "s3"                       # AWS S3 or MinIO
+
+class VirusScanProvider(str, Enum):
+    DISABLED = "disabled"           # No scanning (default for dev)
+    CLAMAV = "clamav"               # ClamAV daemon
+
+class EmbeddingProvider(str, Enum):
+    LOCAL = "local"                 # CPU embedding in-process
+    GPU_WORKER = "gpu_worker"       # Remote GPU gRPC service
 ```
 
 ### [PROMPT] — Section 3 — Provider Factory
@@ -312,6 +324,105 @@ docker-compose.yml services:
 9. flower     — mher/flower:2, port 5555, broker=valkey://valkey:6379/0
 10. phoenix   — arizephoenix/phoenix:latest, port 6006 (tracing observability)
 
+# === SCALED PARSING & SECURITY SERVICES ===
+11-14. unstructured-1 through unstructured-4 — scaled parsing containers
+               image: downloads.unstructured.io/unstructured-io/unstructured:latest
+               deploy.resources.limits.memory=4G
+               healthcheck: curl -f http://localhost:8000/healthcheck
+15. unstructured-lb — nginx:alpine, port 8000
+               Load balancer for Unstructured containers (round-robin)
+               volume: ./nginx/unstructured.conf:/etc/nginx/conf.d/default.conf:ro
+               UNSTRUCTURED_URL=http://unstructured-lb:8000
+16. clamav     — clamav/clamav:latest, port 3310
+               Virus scanning for uploads (high-security environments)
+               volume: clamav_data:/var/lib/clamav
+               deploy.resources.limits.memory=2G
+               ⚠️ Downloads virus definitions on startup (5-10 min)
+17. embed-worker — build: Dockerfile.embed, port 50051 (gRPC)
+               GPU-accelerated batch embedding service (optional)
+               deploy.resources.reservations.devices: nvidia GPU
+               EMBED_BATCH_SIZE=256
+18. minio      — minio/minio:latest, ports 9000 (API) + 9001 (console)
+               S3-compatible backup storage (self-hosted alternative to AWS S3)
+               command: server /data --console-address ":9001"
+               volume: minio_data:/data
+
+# === NGINX CONFIG FOR UNSTRUCTURED LOAD BALANCER ===
+# Create nginx/unstructured.conf:
+```nginx
+upstream unstructured_backend {
+    least_conn;
+    server unstructured-1:8000 max_fails=3 fail_timeout=30s;
+    server unstructured-2:8000 max_fails=3 fail_timeout=30s;
+    server unstructured-3:8000 max_fails=3 fail_timeout=30s;
+    server unstructured-4:8000 max_fails=3 fail_timeout=30s;
+}
+
+server {
+    listen 8000;
+    client_max_body_size 100M;
+    
+    location / {
+        proxy_pass http://unstructured_backend;
+        proxy_connect_timeout 120s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+    
+    location /healthcheck {
+        return 200 'OK';
+        add_header Content-Type text/plain;
+    }
+}
+```
+
+# === DOCKERFILE WITH NODE.JS FOR LITEPARSE ===
+# Dockerfile must include Node.js 20 LTS for LiteParse CLI:
+```dockerfile
+FROM python:3.11-slim AS base
+
+# Install system dependencies + Node.js 20 LTS
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    libmagic1 \
+    poppler-utils \
+    tesseract-ocr \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @llamaindex/liteparse \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Verify installations
+RUN python --version && node --version && npm --version && liteparse --version
+
+WORKDIR /app
+COPY pyproject.toml .
+RUN pip install --no-cache-dir uv && uv pip install --system -e .
+
+COPY src/ src/
+COPY scripts/ scripts/
+
+# API runs on port 8001
+EXPOSE 8001
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+```
+
+# === DOCKERFILE.EMBED FOR GPU EMBEDDING WORKER (optional) ===
+```dockerfile
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y python3.11 python3-pip
+RUN pip install torch transformers sentence-transformers grpcio grpcio-tools
+
+WORKDIR /app
+COPY src/embedding/ src/embedding/
+COPY protos/ protos/
+
+EXPOSE 50051
+CMD ["python", "-m", "src.embedding.service"]
+```
+
 pyproject.toml core deps:
   llama-index>=0.12
   llama-index-embeddings-huggingface>=0.5
@@ -339,6 +450,17 @@ pyproject.toml core deps:
   prometheus-fastapi-instrumentator>=7.0
   python-magic>=0.4
   httpx>=0.27
+
+  # Security & Scanning
+  pyclamd>=0.4                          # ClamAV async client
+
+  # Backup - S3/MinIO
+  boto3>=1.34                           # AWS S3 SDK
+  s3fs>=2024.6                          # S3 filesystem interface
+
+  # GPU Embedding Worker (optional)
+  grpcio>=1.60                          # gRPC for embedding service
+  grpcio-tools>=1.60
 
 .env.example must include:
   # Valkey
@@ -375,6 +497,41 @@ pyproject.toml core deps:
   # Environment
   ENVIRONMENT=development
   GIT_SHA=local
+
+  # === PARSING ROUTER (Section 8.5) ===
+  ENABLE_PDF_CLASSIFICATION=true
+  UNSTRUCTURED_SCALE=4                  # Number of Unstructured containers
+
+  # === VIRUS SCANNING (Section 8.6) ===
+  ENABLE_VIRUS_SCAN=false               # true for high-security (adds ~200ms latency)
+  CLAMAV_HOST=clamav
+  CLAMAV_PORT=3310
+
+  # === EMBEDDING ===
+  EMBED_PROVIDER=local                  # local | gpu_worker
+  EMBED_WORKER_URL=http://embed-worker:50051
+  EMBED_BATCH_SIZE=256
+
+  # === CHUNKING ===
+  # ⚠️ semantic requires 2x memory per worker (embed model loaded during chunking)
+  # CHUNKING_STRATEGY=sentence          # default: production-safe
+  # CHUNKING_STRATEGY=semantic          # optional: enable with sufficient RAM
+
+  # === BACKUP - S3/MinIO (Section 15.5) ===
+  BACKUP_DESTINATION=s3                 # local | s3
+  BACKUP_S3_BUCKET=company-docs-backup
+  BACKUP_S3_ENDPOINT=http://minio:9000  # Omit for AWS S3
+  AWS_ACCESS_KEY_ID=minioadmin
+  AWS_SECRET_ACCESS_KEY=minioadmin
+  AWS_REGION=us-east-1
+  BACKUP_RETENTION_DAYS=30
+
+  # === MinIO (self-hosted S3 alternative) ===
+  MINIO_ROOT_USER=minioadmin
+  MINIO_ROOT_PASSWORD=minioadmin
+
+  # === RATE LIMITING ===
+  UPLOAD_MB_LIMIT_PER_MINUTE=100        # Per-tenant MB/minute limit
 ```
 
 ### [CHECK] Phase 0 complete when:
@@ -427,6 +584,7 @@ Build the configuration and MongoDB database layer.
    class Tenant(Document):
      slug: str           # unique, URL-safe
      name: str
+     tier: str = "SHARED"  # "SHARED" | "DEDICATED" (auto-promoted at 20K vectors)
      is_active: bool = True
      created_at: datetime = Field(default_factory=datetime.utcnow)
      class Settings:
@@ -472,6 +630,27 @@ Build the configuration and MongoDB database layer.
      class Settings:
        name = "ingestion_jobs"
        indexes = [IndexModel([("document_id", 1)])]
+
+   class ParsedDocumentCache(Document):
+     \"\"\"
+     Cache raw parsed elements for re-chunking without re-parsing.
+     Enables changing chunking strategy without re-uploading documents.
+     \"\"\"
+     doc_id: PydanticObjectId
+     tenant_id: PydanticObjectId
+     file_hash: str
+     parser_used: str          # "unstructured" | "liteparse" | "llamaparse"
+     parser_strategy: str      # "fast" | "hi_res"
+     raw_elements: list[dict]  # Raw Unstructured elements or equivalent
+     page_count: int
+     parsed_at: datetime = Field(default_factory=datetime.utcnow)
+     class Settings:
+       name = "parsed_document_cache"
+       indexes = [
+         IndexModel([("doc_id", 1)], unique=True),
+         IndexModel([("tenant_id", 1), ("file_hash", 1)]),
+         IndexModel([("parsed_at", 1)], expireAfterSeconds=60*60*24*90)  # TTL: 90 days
+       ]
 
 4. src/core/valkey_client.py — Valkey singleton
    from valkey import Valkey
@@ -535,7 +714,23 @@ Implement JWT-based auth and multi-tenant middleware.
    Rate limiting (slowapi, Valkey backend):
      - /search: 30/minute per tenant_id
      - /ingest/upload: 10/minute per tenant_id
+     - /ingest/upload: 100MB/minute per tenant_id (cumulative file size)
      - /auth/login: 5/minute per IP
+
+   MB/minute rate limiting implementation:
+     # Track cumulative upload size per tenant in Valkey with 60s TTL
+     async def check_upload_mb_limit(tenant_id: str, file_size: int) -> bool:
+       key = f"upload_mb:{tenant_id}"
+       current = await valkey.incrby(key, file_size // (1024 * 1024))
+       if current == file_size // (1024 * 1024):  # First upload this minute
+         await valkey.expire(key, 60)
+       if current > settings.upload_mb_limit_per_minute:
+         raise HTTPException(
+           status_code=429,
+           detail=f"Upload limit exceeded: {settings.upload_mb_limit_per_minute}MB/minute",
+           headers={"Retry-After": str(await valkey.ttl(key))}
+         )
+       return True
 
 3. src/core/tenant_context.py
    _tenant_id_var: ContextVar[str | None] = ContextVar("tenant_id", default=None)
@@ -750,6 +945,235 @@ Write src/ingestion/pipeline.py — LlamaIndex IngestionPipeline.
 
 ---
 
+## Section 8.5 — PDF Classification & Intelligent Parser Routing
+
+Automatically classify PDFs and route to optimal parser/strategy based on content type.
+
+### [PROMPT] — Phase 4c — PDF Classifier + Router
+
+```
+Write the document classification and routing system.
+
+1. src/ingestion/classifier.py — PDF Type Classifier
+   Uses PyMuPDF to analyze PDF structure and determine optimal parsing strategy.
+   
+   class PDFType(str, Enum):
+     TEXT_DENSE = "text_dense"       # >90% extractable text
+     SCANNED = "scanned"             # <10% text, primarily images
+     COMPLEX_LAYOUT = "complex"      # Tables, multi-column, charts
+     MIXED = "mixed"                 # Combination
+
+   def classify_pdf(file_path: str) -> PDFType:
+     import fitz  # PyMuPDF
+     doc = fitz.open(file_path)
+     
+     total_pages = len(doc)
+     text_pages = 0
+     image_heavy_pages = 0
+     table_detected = False
+     
+     for page in doc:
+       text = page.get_text()
+       images = page.get_images()
+       tables = page.find_tables()
+       
+       text_ratio = len(text) / max(page.rect.width * page.rect.height, 1)
+       
+       if text_ratio > 0.001:  # Has substantial text
+         text_pages += 1
+       if len(images) > 2:
+         image_heavy_pages += 1
+       if tables:
+         table_detected = True
+     
+     text_pct = text_pages / max(total_pages, 1)
+     image_pct = image_heavy_pages / max(total_pages, 1)
+     
+     if text_pct > 0.9 and not table_detected:
+       return PDFType.TEXT_DENSE
+     elif text_pct < 0.1 and image_pct > 0.5:
+       return PDFType.SCANNED
+     elif table_detected or image_pct > 0.3:
+       return PDFType.COMPLEX_LAYOUT
+     else:
+       return PDFType.MIXED
+
+2. src/ingestion/router.py — Intelligent Parser Router
+   Routes documents to optimal parser based on classification.
+   
+   @dataclass
+   class ParserConfig:
+     provider: ParserProvider
+     strategy: str  # "fast" | "hi_res"
+     ocr_enabled: bool
+     priority: int  # 1=high, 3=low
+   
+   ROUTING_TABLE = {
+     # (mime_type, pdf_type) -> ParserConfig
+     ("application/pdf", PDFType.TEXT_DENSE): 
+       ParserConfig(ParserProvider.LITEPARSE, "fast", False, 1),
+     ("application/pdf", PDFType.SCANNED): 
+       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", True, 2),
+     ("application/pdf", PDFType.COMPLEX_LAYOUT): 
+       ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", False, 2),
+     ("application/pdf", PDFType.MIXED): 
+       ParserConfig(ParserProvider.UNSTRUCTURED, "fast", True, 2),
+     ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", None):
+       ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 1),
+   }
+   
+   def route_to_parser(file_path: str, mime_type: str) -> ParserConfig:
+     pdf_type = None
+     if mime_type == "application/pdf":
+       pdf_type = classify_pdf(file_path)
+       log.info("pdf_classified", file=file_path, type=pdf_type)
+     
+     key = (mime_type, pdf_type)
+     if key in ROUTING_TABLE:
+       return ROUTING_TABLE[key]
+     
+     # Fallback: generic key without pdf_type
+     generic_key = (mime_type, None)
+     return ROUTING_TABLE.get(generic_key, 
+       ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 3))
+
+3. Update src/ingestion/loaders.py to use router:
+   async def load_document(file_path, doc_id, tenant_id) -> list[Document]:
+     mime_type = magic.from_file(file_path, mime=True)
+     
+     if settings.enable_pdf_classification:
+       config = route_to_parser(file_path, mime_type)
+       parser = get_parser(config.provider)
+       # Apply strategy and OCR settings to parser
+     else:
+       parser = get_parser()  # Default provider
+     
+     return await parser.parse(file_path, doc_id, tenant_id)
+
+⚠️ Classification adds ~50-100ms per PDF but saves minutes on parsing decisions.
+   Disable with ENABLE_PDF_CLASSIFICATION=false for simpler deployments.
+```
+
+### [CHECK] Phase 4c complete when:
+- [ ] Text-dense PDF classified as `TEXT_DENSE` and routed to LiteParse
+- [ ] Scanned PDF classified as `SCANNED` and routed to Unstructured hi_res + OCR
+- [ ] Complex PDF with tables classified as `COMPLEX_LAYOUT`
+- [ ] Logs show `pdf_classified type=...` for each upload
+
+---
+
+## Section 8.6 — ClamAV Virus Scanning (High-Security Environments)
+
+Optional virus scanning for uploaded documents before processing.
+
+### [PROMPT] — Phase 4d — Virus Scanner Integration
+
+```
+Write the virus scanning integration for uploaded documents.
+
+1. src/ingestion/scanner.py — ClamAV Async Scanner
+   
+   import pyclamd
+   from src.core.config import get_settings
+   
+   class VirusScanner:
+     def __init__(self):
+       settings = get_settings()
+       if settings.enable_virus_scan:
+         self.clamd = pyclamd.ClamdNetworkSocket(
+           host=settings.clamav_host,
+           port=settings.clamav_port
+         )
+         # Verify connection on init
+         if not self.clamd.ping():
+           raise RuntimeError("ClamAV not reachable at {settings.clamav_host}:{settings.clamav_port}")
+         log.info("clamav_connected", host=settings.clamav_host)
+       else:
+         self.clamd = None
+         log.info("virus_scanning_disabled")
+     
+     async def scan_file(self, file_path: str) -> tuple[bool, str | None]:
+       """
+       Returns (is_clean, threat_name).
+       is_clean=True means no virus found.
+       """
+       if self.clamd is None:
+         return (True, None)  # Scanning disabled
+       
+       result = self.clamd.scan_file(file_path)
+       
+       if result is None:
+         return (True, None)  # Clean
+       
+       # result format: {'/path/to/file': ('FOUND', 'Virus.Name')}
+       status, threat = result.get(file_path, (None, None))
+       if status == 'FOUND':
+         log.warning("virus_detected", file=file_path, threat=threat)
+         return (False, threat)
+       
+       return (True, None)
+   
+   # Module-level singleton (init once per worker)
+   _scanner: VirusScanner | None = None
+   
+   def get_scanner() -> VirusScanner:
+     global _scanner
+     if _scanner is None:
+       _scanner = VirusScanner()
+     return _scanner
+
+2. Update POST /ingest/upload in src/api/routes/ingest.py:
+   
+   @router.post("/upload")
+   async def upload_document(
+     file: UploadFile,
+     current_user: tuple = Depends(get_current_user)
+   ):
+     user, tenant_id = current_user
+     
+     # Save file temporarily
+     temp_path = save_upload(file, tenant_id)
+     
+     # Virus scan BEFORE any processing
+     if settings.enable_virus_scan:
+       scanner = get_scanner()
+       is_clean, threat = await scanner.scan_file(temp_path)
+       if not is_clean:
+         os.remove(temp_path)  # Delete infected file immediately
+         log.error("upload_rejected_malware", tenant_id=tenant_id, 
+                   filename=file.filename, threat=threat)
+         raise HTTPException(
+           status_code=422,
+           detail=f"File rejected: malware detected ({threat})"
+         )
+     
+     # Continue with normal processing (MIME check, hashing, etc.)...
+
+3. Add ClamAV health check to GET /health:
+   
+   if settings.enable_virus_scan:
+     try:
+       scanner = get_scanner()
+       clamd_ping = scanner.clamd.ping() if scanner.clamd else False
+       services["clamav"] = "ok" if clamd_ping else "degraded"
+     except Exception as e:
+       services["clamav"] = f"error: {str(e)}"
+
+⚠️ ClamAV adds 100-300ms latency per file. Only enable for sensitive environments.
+⚠️ ClamAV container needs ~2GB RAM and downloads virus definitions on startup.
+   First scan after startup may be slow while definitions load (~5-10 minutes).
+⚠️ Test with EICAR test file: https://www.eicar.org/download-anti-malware-testfile/
+```
+
+### [CHECK] Phase 4d complete when:
+- [ ] ClamAV container starts and downloads virus definitions
+- [ ] `get_scanner().clamd.ping()` returns True
+- [ ] Upload of EICAR test file returns HTTP 422 "malware detected"
+- [ ] Clean files upload normally with no latency spike
+- [ ] `/health` endpoint shows `clamav: ok` status
+
+---
+
 ## Section 9 — Celery Task Queue (Valkey-backed)
 
 ### [PROMPT] — Phase 5 — Celery Tasks with Valkey
@@ -777,11 +1201,32 @@ Celery app configuration:
       "src.ingestion.tasks.ingest_document_task": {"queue": "ingest"},
       "src.ingestion.tasks.batch_ingest_folder_task": {"queue": "ingest"},
       "src.ingestion.tasks.scheduled_batch_ingest": {"queue": "default"},
+      "src.ingestion.tasks.check_tenant_promotion": {"queue": "default"},
+      "src.ingestion.tasks.run_backup": {"queue": "default"},
     },
     "beat_schedule": {
       "nightly-batch-ingest": {
         "task": "src.ingestion.tasks.scheduled_batch_ingest",
         "schedule": crontab(hour=2, minute=0),
+      },
+      "daily-tenant-promotion-check": {
+        "task": "src.ingestion.tasks.check_tenant_promotion",
+        "schedule": crontab(hour=3, minute=30),  # 03:30 UTC daily
+      },
+      "nightly-full-backup": {
+        "task": "src.ingestion.tasks.run_backup",
+        "schedule": crontab(hour=3, minute=0),
+        "kwargs": {"full": True}
+      },
+      "hourly-mongodb-backup": {
+        "task": "src.ingestion.tasks.run_backup",
+        "schedule": crontab(minute=0),
+        "kwargs": {"mongodb": True}
+      },
+      "weekly-backup-cleanup": {
+        "task": "src.ingestion.tasks.run_backup",
+        "schedule": crontab(day_of_week=0, hour=4, minute=0),
+        "kwargs": {"cleanup": True}
       }
     }
   })
@@ -821,6 +1266,71 @@ Tasks:
    - Fetch all active tenants from MongoDB (sync)
    - For each tenant: dispatch batch_ingest_folder_task
    - Log count + timing
+
+4. @celery_app.task(queue="default")
+   def check_tenant_promotion():
+   \"\"\"
+   Auto-promote tenants to dedicated Qdrant shards when they exceed threshold.
+   Scheduled daily at 03:30 UTC via Celery Beat.
+   \"\"\"
+   from qdrant_client import QdrantClient
+   from src.models.db import Tenant
+   
+   PROMOTION_THRESHOLD = 20_000  # vectors
+   
+   client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+   tenants = Tenant.find(Tenant.is_active == True).to_list()  # sync
+   
+   for tenant in tenants:
+     if tenant.tier == \"DEDICATED\":
+       continue  # Already promoted
+     
+     # Count vectors for this tenant
+     count_result = client.count(
+       collection_name=settings.collection_name,
+       count_filter=Filter(must=[
+         FieldCondition(key=\"tenant_id\", match=MatchValue(value=str(tenant.id)))
+       ])
+     )
+     
+     if count_result.count >= PROMOTION_THRESHOLD:
+       # Create dedicated shard key for tenant
+       client.create_shard_key(
+         collection_name=settings.collection_name,
+         shard_key=str(tenant.id)
+       )
+       
+       # Update tenant tier in MongoDB
+       tenant.tier = \"DEDICATED\"
+       tenant.save()  # sync
+       
+       log.info(\"tenant_promoted_to_dedicated_shard\",
+                tenant_id=str(tenant.id),
+                tenant_slug=tenant.slug,
+                vector_count=count_result.count)
+
+5. @celery_app.task(queue="default")
+   def run_backup(full=False, mongodb=False, qdrant=False, 
+                  documents=False, cleanup=False):
+   \"\"\"
+   Backup task for Celery Beat scheduling.
+   See Section 15.5 for full BackupClient implementation.
+   \"\"\"
+   import asyncio
+   from src.core.backup import BackupClient
+   
+   async def _run():
+     client = BackupClient()
+     if full or mongodb:
+       await client.backup_mongodb()
+     if full or qdrant:
+       await client.backup_qdrant()
+     if full or documents:
+       await client.backup_documents()
+     if cleanup:
+       client.enforce_retention()
+   
+   asyncio.run(_run())
 ```
 
 ---
@@ -1299,6 +1809,284 @@ Add production observability and hardening.
 
 ---
 
+## Section 15.5 — S3/MinIO Production Backup Strategy
+
+Production-grade backup system with S3-compatible storage support.
+
+### [PROMPT] — Phase 11b — S3-Compatible Backup System
+
+```
+Write the production-grade backup system with S3/MinIO support.
+
+1. src/core/backup.py — S3 Backup Client
+   
+   import boto3
+   from botocore.config import Config
+   from datetime import datetime, timedelta
+   import subprocess
+   import gzip
+   import shutil
+   import os
+   
+   class BackupClient:
+     def __init__(self):
+       settings = get_settings()
+       self.destination = settings.backup_destination
+       
+       if self.destination == "s3":
+         # Support both AWS S3 and MinIO
+         self.s3 = boto3.client(
+           's3',
+           endpoint_url=settings.backup_s3_endpoint or None,  # None for AWS
+           aws_access_key_id=settings.aws_access_key_id,
+           aws_secret_access_key=settings.aws_secret_access_key,
+           region_name=settings.aws_region or 'us-east-1',
+           config=Config(signature_version='s3v4')
+         )
+         self.bucket = settings.backup_s3_bucket
+         log.info("backup_client_initialized", destination="s3", 
+                  bucket=self.bucket, endpoint=settings.backup_s3_endpoint)
+       else:
+         self.s3 = None
+         self.local_path = "/backups"  # Mounted volume
+       
+       self.retention_days = settings.backup_retention_days
+     
+     async def backup_mongodb(self) -> str:
+       """Run mongodump, compress, upload to S3 or local."""
+       timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+       local_dump = f"/tmp/mongo_backup_{timestamp}"
+       
+       # Run mongodump
+       subprocess.run([
+         "mongodump",
+         f"--uri={settings.mongodb_url}",
+         f"--out={local_dump}"
+       ], check=True)
+       log.info("mongodump_complete", path=local_dump)
+       
+       # Compress to tar.gz
+       archive_path = f"{local_dump}.tar.gz"
+       shutil.make_archive(local_dump, 'gztar', local_dump)
+       archive_size = os.path.getsize(archive_path)
+       
+       if self.destination == "s3":
+         # Upload to S3/MinIO
+         s3_key = f"mongodb/{timestamp}/dump.tar.gz"
+         self.s3.upload_file(archive_path, self.bucket, s3_key)
+         location = f"s3://{self.bucket}/{s3_key}"
+       else:
+         # Copy to local backup volume
+         dest_dir = f"{self.local_path}/mongodb/{timestamp}"
+         os.makedirs(dest_dir, exist_ok=True)
+         shutil.copy(archive_path, f"{dest_dir}/dump.tar.gz")
+         location = f"{dest_dir}/dump.tar.gz"
+       
+       # Cleanup temp files
+       shutil.rmtree(local_dump)
+       os.remove(archive_path)
+       
+       log.info("mongodb_backup_complete", location=location, size_mb=archive_size/1024/1024)
+       return location
+     
+     async def backup_qdrant(self) -> str:
+       """Create Qdrant snapshot, download, upload to destination."""
+       timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+       
+       # Trigger Qdrant snapshot via API
+       async with httpx.AsyncClient(timeout=300) as client:
+         resp = await client.post(
+           f"http://{settings.qdrant_host}:{settings.qdrant_port}"
+           f"/collections/{settings.collection_name}/snapshots"
+         )
+         resp.raise_for_status()
+         snapshot_name = resp.json()["result"]["name"]
+       
+       log.info("qdrant_snapshot_created", snapshot=snapshot_name)
+       
+       # Download snapshot file
+       local_path = f"/tmp/qdrant_{timestamp}.snapshot"
+       async with httpx.AsyncClient(timeout=600) as client:
+         resp = await client.get(
+           f"http://{settings.qdrant_host}:{settings.qdrant_port}"
+           f"/collections/{settings.collection_name}/snapshots/{snapshot_name}"
+         )
+         resp.raise_for_status()
+         with open(local_path, 'wb') as f:
+           f.write(resp.content)
+       
+       snapshot_size = os.path.getsize(local_path)
+       
+       if self.destination == "s3":
+         s3_key = f"qdrant/{timestamp}/{snapshot_name}"
+         self.s3.upload_file(local_path, self.bucket, s3_key)
+         location = f"s3://{self.bucket}/{s3_key}"
+       else:
+         dest_dir = f"{self.local_path}/qdrant/{timestamp}"
+         os.makedirs(dest_dir, exist_ok=True)
+         shutil.copy(local_path, f"{dest_dir}/{snapshot_name}")
+         location = f"{dest_dir}/{snapshot_name}"
+       
+       os.remove(local_path)
+       log.info("qdrant_backup_complete", location=location, size_mb=snapshot_size/1024/1024)
+       return location
+     
+     async def backup_documents(self) -> str:
+       """Sync document uploads to backup destination."""
+       timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+       
+       if self.destination == "s3":
+         # Use AWS CLI for efficient sync
+         s3_prefix = f"s3://{self.bucket}/documents/{timestamp}/"
+         cmd = ["aws", "s3", "sync", settings.upload_dir, s3_prefix]
+         if settings.backup_s3_endpoint:
+           cmd.extend(["--endpoint-url", settings.backup_s3_endpoint])
+         subprocess.run(cmd, check=True)
+         location = s3_prefix
+       else:
+         dest_dir = f"{self.local_path}/documents/{timestamp}"
+         shutil.copytree(settings.upload_dir, dest_dir)
+         location = dest_dir
+       
+       log.info("documents_backup_complete", location=location)
+       return location
+     
+     def enforce_retention(self):
+       """Delete backups older than retention_days."""
+       cutoff = datetime.utcnow() - timedelta(days=self.retention_days)
+       deleted_count = 0
+       
+       if self.destination == "s3":
+         for prefix in ["mongodb/", "qdrant/", "documents/"]:
+           paginator = self.s3.get_paginator('list_objects_v2')
+           for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+             for obj in page.get('Contents', []):
+               if obj['LastModified'].replace(tzinfo=None) < cutoff:
+                 self.s3.delete_object(Bucket=self.bucket, Key=obj['Key'])
+                 deleted_count += 1
+       else:
+         # Local cleanup
+         for subdir in ["mongodb", "qdrant", "documents"]:
+           base_path = f"{self.local_path}/{subdir}"
+           if os.path.exists(base_path):
+             for backup_dir in os.listdir(base_path):
+               dir_path = f"{base_path}/{backup_dir}"
+               mtime = datetime.fromtimestamp(os.path.getmtime(dir_path))
+               if mtime < cutoff:
+                 shutil.rmtree(dir_path)
+                 deleted_count += 1
+       
+       log.info("backup_retention_enforced", deleted=deleted_count, 
+                retention_days=self.retention_days)
+
+2. scripts/backup.py — Backup CLI Script
+   
+   #!/usr/bin/env python
+   """
+   Production backup script. Run via cron or Celery Beat.
+   
+   Usage:
+     python scripts/backup.py --full          # Full backup (all components)
+     python scripts/backup.py --mongodb       # MongoDB only
+     python scripts/backup.py --qdrant        # Qdrant only
+     python scripts/backup.py --documents     # Document files only
+     python scripts/backup.py --cleanup       # Enforce retention policy
+   """
+   import asyncio
+   import argparse
+   from src.core.backup import BackupClient
+   
+   async def main():
+     parser = argparse.ArgumentParser(description="Company Doc Finder Backup")
+     parser.add_argument('--full', action='store_true', help="Full backup")
+     parser.add_argument('--mongodb', action='store_true', help="MongoDB only")
+     parser.add_argument('--qdrant', action='store_true', help="Qdrant only")
+     parser.add_argument('--documents', action='store_true', help="Documents only")
+     parser.add_argument('--cleanup', action='store_true', help="Enforce retention")
+     args = parser.parse_args()
+     
+     client = BackupClient()
+     results = []
+     
+     if args.full or args.mongodb:
+       results.append(("mongodb", await client.backup_mongodb()))
+     if args.full or args.qdrant:
+       results.append(("qdrant", await client.backup_qdrant()))
+     if args.full or args.documents:
+       results.append(("documents", await client.backup_documents()))
+     if args.cleanup:
+       client.enforce_retention()
+     
+     for component, location in results:
+       print(f"{component}: {location}")
+   
+   if __name__ == "__main__":
+     asyncio.run(main())
+
+3. scripts/restore.py — Point-in-Time Restore Script
+   
+   #!/usr/bin/env python
+   """
+   Restore from backup. Use with caution — overwrites current data.
+   
+   Usage:
+     python scripts/restore.py --mongodb 20260412_030000
+     python scripts/restore.py --qdrant 20260412_030000
+     python scripts/restore.py --list  # List available backups
+   """
+   # Implementation: download from S3, run mongorestore, 
+   # POST to Qdrant /collections/{collection}/snapshots/recover
+
+4. Add to Celery Beat schedule in src/ingestion/tasks.py:
+   
+   @celery_app.task
+   def run_backup(full=False, mongodb=False, qdrant=False, 
+                  documents=False, cleanup=False):
+     """Backup task for Celery Beat scheduling."""
+     import asyncio
+     from src.core.backup import BackupClient
+     
+     async def _run():
+       client = BackupClient()
+       if full or mongodb:
+         await client.backup_mongodb()
+       if full or qdrant:
+         await client.backup_qdrant()
+       if full or documents:
+         await client.backup_documents()
+       if cleanup:
+         client.enforce_retention()
+     
+     asyncio.run(_run())
+   
+   # Add to celery_app.config_from_object beat_schedule:
+   "nightly-full-backup": {
+     "task": "src.ingestion.tasks.run_backup",
+     "schedule": crontab(hour=3, minute=0),  # 03:00 UTC daily
+     "kwargs": {"full": True}
+   },
+   "hourly-mongodb-backup": {
+     "task": "src.ingestion.tasks.run_backup", 
+     "schedule": crontab(minute=0),  # Every hour, on the hour
+     "kwargs": {"mongodb": True}
+   },
+   "weekly-cleanup": {
+     "task": "src.ingestion.tasks.run_backup",
+     "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sunday 04:00
+     "kwargs": {"cleanup": True}
+   },
+```
+
+### [CHECK] Phase 11b complete when:
+- [ ] `scripts/backup.py --full` creates MongoDB dump + Qdrant snapshot
+- [ ] Backups appear in MinIO console at http://localhost:9001
+- [ ] `scripts/backup.py --cleanup` deletes backups older than retention days
+- [ ] Celery Beat logs show nightly backup task execution
+- [ ] `scripts/restore.py --list` shows available backup timestamps
+- [ ] Test restore to empty MongoDB/Qdrant succeeds
+
+---
+
 ## Section 16 — Emergent Capabilities
 
 ### E1 — Chat Memory (Conversational Search)
@@ -1436,6 +2224,11 @@ slowapi = "^0.1"
 | Phoenix | 6006 | http://localhost:6006 |
 | Prometheus | 9090 | http://localhost:9090 |
 | Grafana | 3000 | http://localhost:3000 |
+| Unstructured LB | 8000 | http://localhost:8000/healthcheck |
+| ClamAV | 3310 | — (clamdtop for monitoring) |
+| MinIO API | 9000 | — |
+| MinIO Console | 9001 | http://localhost:9001 |
+| Embed Worker | 50051 | — (gRPC) |
 
 ### Provider env var quick reference
 
@@ -1488,6 +2281,12 @@ LLAMA_CLOUD_API_KEY=llx-...
 | Semantic chunking OOM | Embed model loaded twice | Reuse module-level singleton |
 | asyncio in watchdog | Watchdog callbacks are sync | Use `asyncio.run()` or sync pymongo |
 | MongoDB not async | Using pymongo in FastAPI | Use motor + beanie for async routes |
+| ClamAV scan timeout | Large files, slow disk | Increase timeout in pyclamd config |
+| ClamAV not ready | Definitions still downloading | Wait 5-10 min after container start |
+| S3 backup fails | Wrong endpoint/credentials | Test: `aws s3 ls --endpoint-url` |
+| MinIO not accessible | Port 9000 conflict | Change ports in docker-compose |
+| Unstructured LB 502 | All parsing containers down | Check `docker compose logs unstructured-*` |
+| PDF misclassified | Edge case in classifier | Set `ENABLE_PDF_CLASSIFICATION=false` |
 
 ---
 
@@ -1500,6 +2299,8 @@ Phase 2  → JWT auth + tenant middleware
 Phase 3  → Provider factory (Section 3) ← build this before parsers
 Phase 4a → Parser abstraction + Unstructured + LiteParse
 Phase 4b → IngestionPipeline (swappable chunker)
+Phase 4c → PDF classification + MIME-based routing (Section 8.5)
+Phase 4d → ClamAV virus scanning (Section 8.6) [optional]
 Phase 5  → Qdrant bootstrap (scripts/init_qdrant.py)
 Phase 6  → Celery tasks (Valkey broker)
 Phase 7  → File watcher
@@ -1507,6 +2308,7 @@ Phase 8  → Query engine + summarizer
 Phase 9  → FastAPI endpoints
 Phase 10 → RAGAS evaluation
 Phase 11 → Observability + hardening
+Phase 11b → S3/MinIO backup system (Section 15.5)
 E1–E6   → Emergent capabilities
 ```
 
