@@ -522,13 +522,15 @@ pyproject.toml core deps:
   BACKUP_S3_BUCKET=company-docs-backup
   BACKUP_S3_ENDPOINT=http://minio:9000  # Omit for AWS S3
   AWS_ACCESS_KEY_ID=minioadmin
-  AWS_SECRET_ACCESS_KEY=minioadmin
+  AWS_SECRET_ACCESS_KEY=minioadmin123
   AWS_REGION=us-east-1
   BACKUP_RETENTION_DAYS=30
 
   # === MinIO (self-hosted S3 alternative) ===
+  # API:    http://127.0.0.1:9000 or http://192.168.0.176:9000
+  # WebUI:  http://127.0.0.1:9001 or http://192.168.0.176:9001
   MINIO_ROOT_USER=minioadmin
-  MINIO_ROOT_PASSWORD=minioadmin
+  MINIO_ROOT_PASSWORD=minioadmin123
 
   # === RATE LIMITING ===
   UPLOAD_MB_LIMIT_PER_MINUTE=100        # Per-tenant MB/minute limit
@@ -2079,7 +2081,7 @@ Write the production-grade backup system with S3/MinIO support.
 
 ### [CHECK] Phase 11b complete when:
 - [ ] `scripts/backup.py --full` creates MongoDB dump + Qdrant snapshot
-- [ ] Backups appear in MinIO console at http://localhost:9001
+- [ ] Backups appear in MinIO console at http://127.0.0.1:9001 (login: minioadmin / minioadmin123)
 - [ ] `scripts/backup.py --cleanup` deletes backups older than retention days
 - [ ] Celery Beat logs show nightly backup task execution
 - [ ] `scripts/restore.py --list` shows available backup timestamps
@@ -2226,8 +2228,8 @@ slowapi = "^0.1"
 | Grafana | 3000 | http://localhost:3000 |
 | Unstructured LB | 8000 | http://localhost:8000/healthcheck |
 | ClamAV | 3310 | — (clamdtop for monitoring) |
-| MinIO API | 9000 | — |
-| MinIO Console | 9001 | http://localhost:9001 |
+| MinIO API | 9000 | http://127.0.0.1:9000 (user: minioadmin / pass: minioadmin123) |
+| MinIO Console | 9001 | http://127.0.0.1:9001 (user: minioadmin / pass: minioadmin123) |
 | Embed Worker | 50051 | — (gRPC) |
 
 ### Provider env var quick reference
