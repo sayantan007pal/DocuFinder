@@ -43,25 +43,41 @@ def build_pipeline(vector_store) -> IngestionPipeline:
     """
     Build a LlamaIndex IngestionPipeline with:
     - Swappable chunker (recursive/sentence/semantic via CHUNKING_STRATEGY)
-    - TitleExtractor + KeywordExtractor metadata enrichment
+    - Optional: TitleExtractor + KeywordExtractor metadata enrichment (requires ENABLE_LLM_METADATA=true)
     - HuggingFace local embeddings
     - Qdrant vector store backend (tenant-scoped)
+    
+    ⚠️ LLM extractors are DISABLED by default because they use async internally,
+       which conflicts with Celery's prefork worker pool. Enable only if using
+       Celery with --pool=threads or --pool=solo.
     """
+    import os
     settings = get_settings()
     chunker = get_chunker()
     embed_model = get_embed_model_singleton()
-    llm = get_llm()
+    
+    enable_llm_metadata = os.environ.get("ENABLE_LLM_METADATA", "false").lower() == "true"
 
     log.info("pipeline_building",
              chunker=settings.chunking_strategy,
-             chunk_size=settings.chunk_size)
+             chunk_size=settings.chunk_size,
+             llm_metadata=enable_llm_metadata)
 
+    # Base transformations: chunk + embed
     transformations = [
         chunker,                                        # Split → nodes
-        TitleExtractor(nodes=3, llm=llm),               # Section title metadata
-        KeywordExtractor(keywords=6, llm=llm),          # Keyword metadata
-        embed_model,                                    # Embed nodes
     ]
+    
+    # Optional: Add LLM-based metadata extractors
+    # These call async LLM and conflict with Celery prefork workers
+    if enable_llm_metadata:
+        llm = get_llm()
+        transformations.extend([
+            TitleExtractor(nodes=3, llm=llm),           # Section title metadata
+            KeywordExtractor(keywords=6, llm=llm),      # Keyword metadata
+        ])
+    
+    transformations.append(embed_model)                 # Embed nodes
 
     # Note: IngestionCache with Valkey
     # ValkeyKVStore may not be available yet — RedisKVStore works with
@@ -100,7 +116,7 @@ def run_pipeline(
     t0 = time.monotonic()
     nodes = pipeline.run(
         documents=documents,
-        num_workers=2,          # Max 2 for Celery workers — avoid OOM
+        num_workers=1,          # Must be 1 — Celery prefork workers are daemonic
         show_progress=False,
     )
     duration_ms = (time.monotonic() - t0) * 1000

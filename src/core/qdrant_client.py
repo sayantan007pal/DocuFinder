@@ -90,10 +90,12 @@ async def init_qdrant_connection() -> None:
         client = get_async_qdrant_client()
         settings = get_settings()
         info = await client.get_collection(settings.collection_name)
+        # Defensive access: different qdrant-client versions use different attrs
+        vec_count = getattr(info, "vectors_count", None) or getattr(info, "points_count", 0) or 0
         log.info(
             "qdrant_connected",
             collection=settings.collection_name,
-            vectors_count=info.vectors_count,
+            vectors_count=vec_count,
         )
     except Exception as exc:
         log.warning("qdrant_collection_not_found",

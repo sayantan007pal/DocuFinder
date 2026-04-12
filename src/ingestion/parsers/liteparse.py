@@ -37,8 +37,9 @@ class LiteParseParser(BaseDocumentParser):
 
         try:
             # Call liteparse CLI — outputs JSON to stdout
+            # CLI format: liteparse parse --format json <file>
             result = subprocess.run(
-                ["liteparse", "--json", str(file_path)],
+                ["liteparse", "parse", "--format", "json", "-q", str(file_path)],
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -58,10 +59,21 @@ class LiteParseParser(BaseDocumentParser):
 
         base_meta = self._base_metadata(file_path, doc_id, tenant_id, "liteparse")
 
-        # LiteParse returns a list of page objects or a single text block
+        # LiteParse returns {"pages": [...]} with each page having "text" field
         documents: list[Document] = []
 
-        if isinstance(data, list):
+        # Handle {"pages": [...]} format (v0.1.0+)
+        if isinstance(data, dict) and "pages" in data:
+            for page in data["pages"]:
+                page_num = page.get("page", 1)
+                text = page.get("text", "")
+                if text.strip():
+                    documents.append(Document(
+                        text=text,
+                        metadata={**base_meta, "page_number": page_num},
+                    ))
+        # Handle legacy list format
+        elif isinstance(data, list):
             for i, page in enumerate(data):
                 text = page.get("text", "") if isinstance(page, dict) else str(page)
                 if text.strip():
@@ -69,6 +81,7 @@ class LiteParseParser(BaseDocumentParser):
                         text=text,
                         metadata={**base_meta, "page_number": i + 1},
                     ))
+        # Handle legacy single dict format
         elif isinstance(data, dict):
             text = data.get("text", "") or data.get("content", "")
             if text.strip():

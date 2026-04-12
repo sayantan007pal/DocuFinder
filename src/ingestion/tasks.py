@@ -76,27 +76,21 @@ celery_app.config_from_object(
 def _run_async(coro):
     """
     Run an async coroutine from a sync Celery task.
-    Creates a fresh event loop — intentional pattern for Celery compatibility.
+    Uses asyncio.run() which properly manages the event loop lifecycle.
+    
+    Note: Motor/Beanie need to be initialized within the SAME event loop
+    they're used in. We handle this by always reinitializing the DB connection
+    at the start of each task's async context.
     """
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    return asyncio.run(coro)
 
 
 # ─── Init DB helper for Celery workers ────────────────────────
 
-_db_initialized = False
-
-
-def _ensure_db():
-    """Initialize MongoDB + Beanie for sync Celery usage."""
-    global _db_initialized
-    if not _db_initialized:
-        from src.core.database import init_db
-        _run_async(init_db())
-        _db_initialized = True
+async def _ensure_db_async():
+    """Initialize MongoDB + Beanie within an async context."""
+    from src.core.database import init_db
+    await init_db()
 
 
 # ─── Tasks ────────────────────────────────────────────────────
@@ -113,10 +107,9 @@ def ingest_document_task(self, file_path: str, doc_id: str, tenant_id: str):
     Main ingestion task. Parse → embed → upsert to Qdrant.
     Called by the upload endpoint and file watcher.
 
-    ⚠️ asyncio.run() pattern: async parsers called from sync Celery task.
+    ⚠️ All async operations run in a SINGLE asyncio.run() call to avoid
+       Motor event loop caching issues.
     """
-    _ensure_db()
-
     from beanie import PydanticObjectId
     from src.models.db import DocRecord, IngestionJob
     from src.core.qdrant_client import get_vector_store
@@ -125,56 +118,82 @@ def ingest_document_task(self, file_path: str, doc_id: str, tenant_id: str):
 
     doc_obj_id = PydanticObjectId(doc_id)
 
-    try:
+    async def _async_ingest():
+        """Async portion: init db, mark processing, parse document."""
+        await _ensure_db_async()
+
         # a. Mark as processing
-        _run_async(
-            DocRecord.find_one(DocRecord.id == doc_obj_id).update(
-                {"$set": {"status": "processing", "updated_at": datetime.utcnow()}}
-            )
+        await DocRecord.find_one(DocRecord.id == doc_obj_id).update(
+            {"$set": {"status": "processing", "updated_at": datetime.utcnow()}}
         )
-        _run_async(
-            IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
-                {"$set": {"status": "running", "started_at": datetime.utcnow()}}
-            )
+        await IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
+            {"$set": {"status": "running", "started_at": datetime.utcnow()}}
         )
         log.info("ingest_task_started", doc_id=doc_id, tenant_id=tenant_id)
 
-        # b. Parse document (async → sync bridge)
-        documents = _run_async(load_document(file_path, doc_id, tenant_id))
+        # b. Parse document
+        documents = await load_document(file_path, doc_id, tenant_id)
+        return documents
+
+    async def _async_mark_complete(page_count: int, node_count: int):
+        """Mark document as completed in DB."""
+        await _ensure_db_async()
+        await DocRecord.find_one(DocRecord.id == doc_obj_id).update(
+            {
+                "$set": {
+                    "status": "completed",
+                    "page_count": page_count,
+                    "ingested_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
+                }
+            }
+        )
+        await IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
+            {
+                "$set": {
+                    "status": "success",
+                    "finished_at": datetime.utcnow(),
+                    "node_count": node_count,
+                }
+            }
+        )
+
+    async def _async_mark_failed(error_msg: str):
+        """Mark document as failed in DB."""
+        await _ensure_db_async()
+        await DocRecord.find_one(DocRecord.id == doc_obj_id).update(
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_msg": error_msg[:500],
+                    "updated_at": datetime.utcnow(),
+                }
+            }
+        )
+        await IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
+            {
+                "$set": {
+                    "status": "failed",
+                    "finished_at": datetime.utcnow(),
+                    "error_detail": error_msg[:1000],
+                }
+            }
+        )
+
+    try:
+        # Phase 1: Async - init DB, mark processing, parse document
+        documents = _run_async(_async_ingest())
 
         if not documents:
             raise ValueError("No content extracted from document")
 
-        # c. Get tenant-scoped vector store
+        # Phase 2: Sync - embed and upsert to Qdrant
         vector_store = get_vector_store(tenant_id)
-
-        # d. Run ingestion pipeline
         node_count = run_pipeline(documents, doc_id, tenant_id, vector_store)
 
-        # e. Mark as completed
-        _run_async(
-            DocRecord.find_one(DocRecord.id == doc_obj_id).update(
-                {
-                    "$set": {
-                        "status": "completed",
-                        "page_count": len(documents),
-                        "ingested_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow(),
-                    }
-                }
-            )
-        )
-        _run_async(
-            IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
-                {
-                    "$set": {
-                        "status": "success",
-                        "finished_at": datetime.utcnow(),
-                        "node_count": node_count,
-                    }
-                }
-            )
-        )
+        # Phase 3: Async - mark complete
+        _run_async(_async_mark_complete(len(documents), node_count))
+
         log.info("ingest_task_complete",
                  doc_id=doc_id, tenant_id=tenant_id,
                  pages=len(documents), nodes=node_count)
@@ -184,28 +203,7 @@ def ingest_document_task(self, file_path: str, doc_id: str, tenant_id: str):
                   doc_id=doc_id, tenant_id=tenant_id,
                   error=str(exc), exc_info=True)
         # Mark as failed
-        _run_async(
-            DocRecord.find_one(DocRecord.id == doc_obj_id).update(
-                {
-                    "$set": {
-                        "status": "failed",
-                        "error_msg": str(exc)[:500],
-                        "updated_at": datetime.utcnow(),
-                    }
-                }
-            )
-        )
-        _run_async(
-            IngestionJob.find_one(IngestionJob.document_id == doc_obj_id).update(
-                {
-                    "$set": {
-                        "status": "failed",
-                        "finished_at": datetime.utcnow(),
-                        "error_detail": str(exc)[:1000],
-                    }
-                }
-            )
-        )
+        _run_async(_async_mark_failed(str(exc)))
         raise self.retry(exc=exc)
 
 
