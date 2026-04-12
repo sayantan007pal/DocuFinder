@@ -147,24 +147,26 @@ async def search(
 ) -> QueryResult:
     """
     Perform hybrid semantic search over tenant's document collection.
-    Results cached in Valkey for 5 minutes.
+    Results cached in Valkey for 5 minutes (skip gracefully if Valkey down).
     """
-    from src.core.valkey_client import get_valkey
     from src.core.metrics import rag_search_latency, rag_nodes_retrieved
 
     settings = get_settings()
 
-    # Cache key
+    # Cache lookup (non-fatal — skip if Valkey not running)
     cache_key = (
         f"search:{tenant_id}:"
         f"{hashlib.sha256(f'{query}{top_k}'.encode()).hexdigest()[:16]}"
     )
-
-    valkey = await get_valkey()
-    cached = await valkey.get(cache_key)
-    if cached:
-        data = json.loads(cached)
-        return QueryResult(**{**data, "cached": True})
+    try:
+        from src.core.valkey_client import get_valkey
+        valkey = await get_valkey()
+        cached = await valkey.get(cache_key)
+        if cached:
+            data = json.loads(cached)
+            return QueryResult(**{**data, "cached": True})
+    except Exception:
+        valkey = None  # Proceed without cache
 
     t0 = time.monotonic()
     engine = build_query_engine(tenant_id, top_k)
@@ -193,31 +195,38 @@ async def search(
         provider_used=settings.index_provider,
     )
 
-    # Record metrics
-    rag_search_latency.labels(
-        tenant_id=tenant_id[:8],
-        provider=settings.index_provider,
-    ).observe(latency_ms / 1000)
-    rag_nodes_retrieved.labels(tenant_id=tenant_id[:8]).observe(len(source_nodes))
+    # Record metrics (non-fatal)
+    try:
+        rag_search_latency.labels(
+            tenant_id=tenant_id[:8],
+            provider=settings.index_provider,
+        ).observe(latency_ms / 1000)
+        rag_nodes_retrieved.labels(tenant_id=tenant_id[:8]).observe(len(source_nodes))
+    except Exception:
+        pass
 
-    # Cache 5 minutes
-    cache_data = {
-        "answer": result.answer,
-        "source_nodes": [
-            {
-                "text": n.text,
-                "score": n.score,
-                "filename": n.filename,
-                "page_number": n.page_number,
-                "doc_id": n.doc_id,
+    # Cache 5 minutes (non-fatal)
+    try:
+        if valkey:
+            cache_data = {
+                "answer": result.answer,
+                "source_nodes": [
+                    {
+                        "text": n.text,
+                        "score": n.score,
+                        "filename": n.filename,
+                        "page_number": n.page_number,
+                        "doc_id": n.doc_id,
+                    }
+                    for n in source_nodes
+                ],
+                "latency_ms": result.latency_ms,
+                "provider_used": result.provider_used,
+                "cached": True,
             }
-            for n in source_nodes
-        ],
-        "latency_ms": result.latency_ms,
-        "provider_used": result.provider_used,
-        "cached": True,
-    }
-    await valkey.setex(cache_key, 300, json.dumps(cache_data))
+            await valkey.setex(cache_key, 300, json.dumps(cache_data))
+    except Exception:
+        pass
 
     log.info("search_complete",
              tenant_id=tenant_id,

@@ -79,8 +79,12 @@ async def upload_document(
             detail=f"File size {file_size / 1e6:.1f}MB exceeds limit of {settings.max_upload_mb}MB",
         )
 
-    # MB/minute rate limit
-    await check_upload_mb_limit(tenant_id, file_size)
+    # MB/minute rate limit (skip gracefully if Valkey not running)
+    try:
+        await check_upload_mb_limit(tenant_id, file_size)
+    except Exception as e:
+        log.warning("upload_rate_limit_skipped", error=str(e),
+                    hint="Start Valkey for rate limiting")
 
     # SHA-256 deduplication
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -132,37 +136,48 @@ async def upload_document(
     )
     await doc.insert()
 
-    # Dispatch Celery ingestion task
-    from src.ingestion.tasks import ingest_document_task
-    task = ingest_document_task.apply_async(
-        args=[str(dest_path), str(doc.id), tenant_id],
-        queue="ingest",
-    )
+    # Dispatch Celery ingestion task (non-fatal if broker down)
+    task_id = None
+    try:
+        from src.ingestion.tasks import ingest_document_task
+        task = ingest_document_task.apply_async(
+            args=[str(dest_path), str(doc.id), tenant_id],
+            queue="ingest",
+        )
+        task_id = task.id
 
-    # Create IngestionJob record
-    job = IngestionJob(
-        document_id=doc.id,
-        celery_task_id=task.id,
-        status="pending",
-    )
-    await job.insert()
+        # Create IngestionJob record
+        job = IngestionJob(
+            document_id=doc.id,
+            celery_task_id=task_id,
+            status="pending",
+        )
+        await job.insert()
+    except Exception as e:
+        log.warning("celery_dispatch_failed", error=str(e),
+                    doc_id=str(doc.id),
+                    hint="Start Celery worker: celery -A src.ingestion.tasks worker")
+
 
     # Metrics
-    rag_documents_total.labels(tenant_id=tenant_id[:8], status="queued").inc()
-    rag_upload_file_size.labels(mime_type=doc.mime_type).observe(file_size)
+    try:
+        rag_documents_total.labels(tenant_id=tenant_id[:8], status="queued").inc()
+        rag_upload_file_size.labels(mime_type=doc.mime_type).observe(file_size)
+    except Exception:
+        pass
 
     log.info("document_uploaded",
              doc_id=str(doc.id), filename=filename,
              file_size=file_size, tenant_id=tenant_id,
-             task_id=task.id)
+             task_id=task_id)
 
     return UploadResponse(
         doc_id=str(doc.id),
         filename=filename,
         file_size=file_size,
         status="queued",
-        task_id=task.id,
-        message="Document queued for ingestion",
+        task_id=task_id,
+        message="Document queued for ingestion. Start Celery worker to process.",
     )
 
 
