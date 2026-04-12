@@ -213,9 +213,11 @@ Next.js 15 app in `/frontend`:
 
 ### For Local Development (minimal)
 - Python 3.11+
+- Node.js 18+ (for `liteparse` PDF parser)
 - MongoDB (Homebrew: `brew install mongodb-community`)
 - Ollama with at least one model (`brew install ollama`)
 - Qdrant Cloud account (free tier works)
+- HuggingFace token (free, for embedding model downloads)
 
 ### For Full Stack (Docker)
 - Docker Desktop 4.x
@@ -246,17 +248,27 @@ cp .env.example .env
 mkdir -p /tmp/docufinder-mongo
 mongod --dbpath /tmp/docufinder-mongo --port 27017 &
 
-# 5. Start Ollama
+# 5. Start Valkey (Redis-compatible broker for Celery)
+docker run -d --name valkey -p 6379:6379 valkey/valkey:8-alpine
+
+# 6. Start Ollama
 ollama serve &
 ollama pull gemma4:31b-cloud   # or any available model
 
-# 6. Initialize Qdrant Cloud collection
+# 7. Install liteparse (optional, lightweight PDF parser)
+npm install -g @llamaindex/liteparse
+
+# 8. Initialize Qdrant Cloud collection
 python scripts/init_qdrant.py
 
-# 7. Start the API
-uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+# 9. Start the API server
+HF_TOKEN=your_huggingface_token uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
 
-# 8. Open API docs
+# 10. Start Celery worker (in a separate terminal)
+PARSER_PROVIDER=liteparse HF_TOKEN=your_huggingface_token \
+  celery -A src.ingestion.tasks worker --loglevel=info -Q ingest,default
+
+# 11. Open API docs
 open http://localhost:8001/docs
 ```
 
@@ -574,6 +586,9 @@ docker compose logs api --tail=50
 | `OLLAMA_MODEL` | `gemma4:31b-cloud` | No | LLM model name |
 | `EMBED_MODEL_NAME` | `BAAI/bge-large-en-v1.5` | No | HuggingFace embedding model |
 | `PARSER_PROVIDER` | `unstructured` | No | `unstructured` \| `liteparse` \| `llamaparse` |
+| `HF_TOKEN` | — | Recommended | HuggingFace token for embedding model downloads |
+| `ENABLE_LLM_METADATA` | `false` | No | Enable TitleExtractor + KeywordExtractor (requires `--pool=solo` for Celery) |
+| `ENABLE_PDF_CLASSIFICATION` | `true` | No | Enable PDF text-layer detection before parsing |
 | `LLM_PROVIDER` | `ollama` | No | `ollama` \| `openai` \| `gemini` |
 | `INDEX_PROVIDER` | `local_qdrant` | No | `local_qdrant` \| `llamacloud` |
 | `CHUNK_SIZE` | `512` | No | Tokens per chunk |
@@ -722,7 +737,31 @@ python scripts/init_qdrant.py
 
 ### Search returns 0 results after uploading
 **Expected behavior**: Documents are stored as `status=queued` until Celery processes them.  
-**Fix**: Start the full stack with `docker compose up -d` and wait for status to become `completed`
+**Fix**: Start Celery worker and Valkey, then wait for status to become `completed`
+
+### Documents stuck in `queued` status, `task_id=None` in logs
+**Cause**: Valkey/Redis broker not running — Celery cannot dispatch tasks  
+**Fix**: Start Valkey: `docker run -d --name valkey -p 6379:6379 valkey/valkey:8-alpine`
+
+### Celery task fails with `Detected nested async` error
+**Cause**: LLM-based metadata extractors (TitleExtractor, KeywordExtractor) use async internally, conflicting with Celery's prefork pool  
+**Fix**: Already fixed — LLM extractors disabled by default. Set `ENABLE_LLM_METADATA=true` only with `celery -P solo`
+
+### Celery fails with `daemonic processes are not allowed to have children`
+**Cause**: IngestionPipeline `num_workers>1` conflicts with Celery prefork  
+**Fix**: Already fixed — `num_workers=1` is now hardcoded in `pipeline.py`
+
+### liteparse returns `error: unknown option '--json'`
+**Cause**: Outdated liteparse CLI syntax  
+**Fix**: Already fixed — uses `liteparse parse --format json -q <file>`
+
+### `AttributeError: 'CollectionInfo' object has no attribute 'vectors_count'`
+**Cause**: Qdrant client API changed in v1.17+  
+**Fix**: Already patched — uses `getattr()` pattern for compatibility
+
+### Embedding model fails to download
+**Cause**: Missing HuggingFace token for gated models  
+**Fix**: Set `HF_TOKEN=hf_xxxxx` environment variable (get token from https://huggingface.co/settings/tokens)
 
 ---
 
