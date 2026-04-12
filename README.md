@@ -227,50 +227,97 @@ Next.js 15 app in `/frontend`:
 
 ## 6. Quick Start (Local Dev)
 
+### Option A: Automated Setup with uv (Recommended)
+
+Uses [uv](https://docs.astral.sh/uv/) for 10-100x faster dependency installation:
+
 ```bash
 # 1. Clone the repo
 git clone https://github.com/sayantan007pal/DocuFinder.git
 cd DocuFinder
 
-# 2. Create Python venv and install dependencies
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# 3. Copy and configure environment
+# 2. Configure environment variables
 cp .env.example .env
 # Edit .env — at minimum set:
 #   QDRANT_URL=https://your-cluster.qdrant.io:6333
 #   QDRANT_API_KEY=your-api-key
 #   JWT_SECRET_KEY=$(openssl rand -hex 32)
+#   HF_TOKEN=your_huggingface_token
 
-# 4. Start MongoDB (Homebrew)
+# 3. Run the setup script (installs uv automatically if needed)
+chmod +x setup.sh
+./setup.sh
+```
+
+The script will:
+- **Install uv** (ultra-fast Python package manager)
+- Create virtual environment and install all dependencies via `uv sync`
+- Start MongoDB, Valkey, and Ollama
+- Install liteparse PDF parser
+- Initialize Qdrant collection
+- Show instructions for starting API and Celery workers
+
+### Option B: Manual Setup with uv
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/sayantan007pal/DocuFinder.git
+cd DocuFinder
+
+# 2. Install uv (10-100x faster than pip)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 3. Create venv and install dependencies (super fast!)
+uv sync --dev
+
+# 4. Copy and configure environment
+cp .env.example .env
+# Edit .env — at minimum set:
+#   QDRANT_URL=https://your-cluster.qdrant.io:6333
+#   QDRANT_API_KEY=your-api-key
+#   JWT_SECRET_KEY=$(openssl rand -hex 32)
+#   HF_TOKEN=your_huggingface_token
+
+# 5. Start MongoDB (Homebrew)
 mkdir -p /tmp/docufinder-mongo
 mongod --dbpath /tmp/docufinder-mongo --port 27017 &
 
-# 5. Start Valkey (Redis-compatible broker for Celery)
+# 6. Start Valkey (Redis-compatible broker for Celery)
 docker run -d --name valkey -p 6379:6379 valkey/valkey:8-alpine
 
-# 6. Start Ollama
+# 7. Start Ollama
 ollama serve &
 ollama pull gemma4:31b-cloud   # or any available model
 
-# 7. Install liteparse (optional, lightweight PDF parser)
+# 8. Install liteparse (optional, lightweight PDF parser)
 npm install -g @llamaindex/liteparse
 
-# 8. Initialize Qdrant Cloud collection
-python scripts/init_qdrant.py
+# 9. Initialize Qdrant Cloud collection
+uv run python scripts/init_qdrant.py
 
-# 9. Start the API server
-HF_TOKEN=your_huggingface_token uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+# 10. Start the API server
+uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
 
-# 10. Start Celery worker (in a separate terminal)
-PARSER_PROVIDER=liteparse HF_TOKEN=your_huggingface_token \
-  celery -A src.ingestion.tasks worker --loglevel=info -Q ingest,default
+# 11. Start Celery worker (in a separate terminal)
+PARSER_PROVIDER=liteparse uv run celery -A src.ingestion.tasks worker --loglevel=info -Q ingest,default
 
-# 11. Open API docs
+# 12. Open API docs
 open http://localhost:8001/docs
 ```
+
+<details>
+<summary>📦 Alternative: Manual Setup with pip (slower)</summary>
+
+```bash
+# If you prefer pip over uv:
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Then follow steps 4-12 above, replacing "uv run" with nothing
+# (just run commands directly in activated venv)
+```
+</details>
 
 ---
 

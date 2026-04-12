@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=70", "setuptools-scm"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=70,<82", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "company-doc-finder"
@@ -13,7 +13,6 @@ dependencies = [
     "llama-index-embeddings-huggingface>=0.5",
     "llama-index-llms-ollama>=0.5",
     "llama-index-vector-stores-qdrant>=0.6",
-    "llama-index-node-parser-semantic>=0.1",
     # LlamaCloud (optional — only needed for cloud providers)
     "llama-parse>=0.5",
 
@@ -25,7 +24,7 @@ dependencies = [
     "python-multipart>=0.0.9",
 
     # ── Task queue — VALKEY (not redis) ───────────────────────────
-    "celery[valkey]>=5.4",
+    "celery>=5.4",
     "valkey>=6.0",
 
     # ── Database — MongoDB ────────────────────────────────────────
