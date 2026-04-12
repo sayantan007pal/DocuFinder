@@ -98,6 +98,7 @@ class Settings(BaseSettings):
 
     # ── Rate limiting ──────────────────────────────────────────
     upload_mb_limit_per_minute: int = 100
+    rate_limit_storage: str = "auto"           # auto | valkey | memory
 
     # ── Virus scanning ─────────────────────────────────────────
     enable_virus_scan: bool = False

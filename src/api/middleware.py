@@ -21,18 +21,49 @@ from src.core.tenant_context import set_tenant_id
 
 log = structlog.get_logger(__name__)
 
-# ─── Rate Limiter (Valkey-backed) ────────────────────────────
+# ─── Rate Limiter (Valkey-backed with memory fallback) ───────
 
-settings = get_settings()
 
-# Valkey URI for slowapi (use redis:// scheme — slowapi is wire-compatible)
-# slowapi uses redis-py internally but the Valkey server is wire-compatible
-_slowapi_uri = settings.valkey_url.replace("valkey://", "redis://")
+def _create_limiter() -> Limiter:
+    """
+    Create rate limiter with configurable storage backend.
+    
+    Modes:
+    - auto: Try Valkey/Redis, fall back to memory if unavailable
+    - valkey: Require Valkey/Redis (fail if unavailable)
+    - memory: Always use in-memory storage (dev/testing only)
+    """
+    settings = get_settings()
+    storage_mode = settings.rate_limit_storage.lower()
+    
+    # Memory mode: always use in-memory storage
+    if storage_mode == "memory":
+        log.info("rate_limiter_memory", reason="configured")
+        return Limiter(key_func=get_remote_address, storage_uri="memory://")
+    
+    # Valkey URI for slowapi (use redis:// scheme — slowapi is wire-compatible)
+    _slowapi_uri = settings.valkey_url.replace("valkey://", "redis://")
+    
+    # Valkey mode: require Redis/Valkey (let it fail if unavailable)
+    if storage_mode == "valkey":
+        log.info("rate_limiter_valkey", uri=_slowapi_uri.split("@")[-1])
+        return Limiter(key_func=get_remote_address, storage_uri=_slowapi_uri)
+    
+    # Auto mode (default): try Redis/Valkey, fall back to memory
+    try:
+        limiter = Limiter(key_func=get_remote_address, storage_uri=_slowapi_uri)
+        log.info("rate_limiter_valkey", uri=_slowapi_uri.split("@")[-1])
+        return limiter
+    except Exception as e:
+        log.warning(
+            "rate_limiter_fallback_memory",
+            error=str(e),
+            hint="Start Valkey: docker compose up -d valkey",
+        )
+        return Limiter(key_func=get_remote_address, storage_uri="memory://")
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=_slowapi_uri,
-)
+
+limiter = _create_limiter()
 
 
 # ─── Request ID Middleware ────────────────────────────────────
@@ -76,6 +107,10 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
+
+        # Skip auth for CORS preflight requests (browsers send OPTIONS without auth)
+        if request.method == "OPTIONS":
+            return await call_next(request)
 
         # Skip auth for public routes
         if any(path.startswith(p) for p in _PUBLIC_PREFIXES):
