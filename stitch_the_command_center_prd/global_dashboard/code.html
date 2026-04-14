@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DocIntel Hub - Kinetic Observatory</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary": "#74d1ff",
+                    "error-container": "#93000a",
+                    "on-tertiary-fixed": "#261900",
+                    "tertiary-fixed": "#ffdea3",
+                    "surface-bright": "#31394a",
+                    "surface-tint": "#d8b9ff",
+                    "on-error-container": "#ffdad6",
+                    "on-secondary-fixed": "#001e2b",
+                    "on-primary-fixed-variant": "#6017b0",
+                    "on-secondary-container": "#002e3f",
+                    "tertiary-container": "#b88917",
+                    "surface-container-low": "#131c2b",
+                    "on-primary-fixed": "#290055",
+                    "surface-container-lowest": "#060e1d",
+                    "secondary-container": "#069ccd",
+                    "primary-fixed": "#eddcff",
+                    "on-primary": "#450087",
+                    "primary-fixed-dim": "#d8b9ff",
+                    "inverse-primary": "#7939c9",
+                    "error": "#ffb4ab",
+                    "surface": "#0b1323",
+                    "on-background": "#dbe2f8",
+                    "tertiary-fixed-dim": "#f4be4c",
+                    "outline-variant": "#4b4453",
+                    "on-secondary": "#003548",
+                    "surface-dim": "#0b1323",
+                    "inverse-on-surface": "#283041",
+                    "on-tertiary-container": "#382700",
+                    "on-error": "#690005",
+                    "on-surface": "#dbe2f8",
+                    "on-tertiary": "#402d00",
+                    "inverse-surface": "#dbe2f8",
+                    "secondary-fixed": "#c1e8ff",
+                    "background": "#0b1323",
+                    "secondary-fixed-dim": "#74d1ff",
+                    "primary": "#d8b9ff",
+                    "surface-container-highest": "#2d3546",
+                    "tertiary": "#f4be4c",
+                    "on-tertiary-fixed-variant": "#5d4200",
+                    "on-secondary-fixed-variant": "#004d67",
+                    "surface-variant": "#2d3546",
+                    "surface-container": "#18202f",
+                    "on-surface-variant": "#cdc3d5",
+                    "outline": "#978d9f",
+                    "on-primary-container": "#3c0077",
+                    "primary-container": "#ae72ff",
+                    "surface-container-high": "#222a3a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Space Grotesk"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(12px);
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #ae72ff 0%, #74d1ff 100%);
+        }
+        .kinetic-text {
+            background: linear-gradient(135deg, #d8b9ff 0%, #74d1ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .ghost-border {
+            outline: 1px solid rgba(75, 68, 83, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary-container/30">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/5 backdrop-blur-md flex justify-between items-center px-8 h-16 w-full">
+<div class="flex items-center gap-8">
+<span class="font-headline font-black text-primary text-xl tracking-tighter">DocIntel Hub</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="font-headline uppercase tracking-widest text-[10px] text-primary border-b-2 border-primary py-5" href="#">Analysis</a>
+<a class="font-headline uppercase tracking-widest text-[10px] text-slate-400 hover:text-white transition-opacity" href="#">Metadata</a>
+<a class="font-headline uppercase tracking-widest text-[10px] text-slate-400 hover:text-white transition-opacity" href="#">Export</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<input class="bg-surface-container-lowest border-none border-b-2 border-outline-variant focus:border-primary focus:ring-0 text-[10px] font-headline tracking-widest w-48 transition-all" placeholder="SEARCH ARCHIVE..." type="text"/>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+</div>
+<button class="material-symbols-outlined text-slate-400 hover:text-white transition-opacity">notifications</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary/20">
+<img class="w-full h-full object-cover" data-alt="close-up portrait of a professional man with neutral expression in high-key cinematic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtQl_J2x4Dwz4VW6uAPSZ3zgUW6LChrVBnIjUgnDh7KoSBSgkABEAomg1LRLKxSwKCLKAnFY1z7vY3bVrgbUDwX9g1hz4iO5CtUwWvPt-R4Y24FRFIqBqQN6a4VLofSm-UO3x3i79dq1KNRWAyjjFt8oSUjPClJeFzR3j6m9TB6StVNT2kn4KZy4_rYBoBytsDYDMC8s0k6z5BBmjpv1PUidpcbiC_AW1NKjOydVef_qSzh20aKoANZPXGw9tCggaWZ4-rCkYdcYK3"/>
+</div>
+</div>
+</header>
+<div class="flex pt-16 h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 border-r border-white/5 bg-[#0b1323] flex flex-col p-4 shrink-0">
+<div class="mb-8 px-2">
+<h2 class="text-xl font-headline font-bold bg-gradient-to-r from-[#9f62f1] to-[#64b5f6] bg-clip-text text-transparent">Kinetic Observatory</h2>
+<p class="text-[10px] font-headline uppercase tracking-widest text-slate-500">Document Intelligence</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-[#9f62f1] bg-[#2d3546] rounded-lg font-headline tracking-tight transition-transform active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg">hub</span>
+<span class="text-sm">Intelligence Hub</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg font-headline tracking-tight transition-all" href="#">
+<span class="material-symbols-outlined text-lg">description</span>
+<span class="text-sm">Document Viewer</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg font-headline tracking-tight transition-all" href="#">
+<span class="material-symbols-outlined text-lg">account_tree</span>
+<span class="text-sm">Reasoning Graph</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg font-headline tracking-tight transition-all" href="#">
+<span class="material-symbols-outlined text-lg">forum</span>
+<span class="text-sm">Chat History</span>
+</a>
+</nav>
+<div class="mt-auto pt-4 border-t border-white/5">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg font-headline tracking-tight transition-all" href="#">
+<span class="material-symbols-outlined text-lg">settings</span>
+<span class="text-sm">System Settings</span>
+</a>
+<div class="mt-4 p-3 rounded-xl glass-panel ghost-border">
+<p class="text-[10px] font-headline uppercase tracking-widest text-secondary mb-2">System Load</p>
+<div class="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+<div class="h-full kinetic-gradient w-2/3"></div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 overflow-y-auto bg-surface p-8 scroll-smooth">
+<div class="grid grid-cols-12 gap-8">
+<!-- Center: Activity Feed -->
+<section class="col-span-12 lg:col-span-8 space-y-8">
+<header class="flex justify-between items-end">
+<div>
+<span class="font-headline uppercase tracking-widest text-[10px] text-secondary">Real-time Stream</span>
+<h1 class="text-4xl font-headline font-bold tracking-tight text-on-surface mt-1">Activity Feed</h1>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-1.5 rounded-full bg-surface-container-high text-[10px] font-headline tracking-widest uppercase hover:bg-surface-bright transition-colors">Filter</button>
+<button class="px-4 py-1.5 rounded-full kinetic-gradient text-white text-[10px] font-headline tracking-widest uppercase shadow-lg shadow-primary/10">Execute Query</button>
+</div>
+</header>
+<div class="space-y-4">
+<!-- Query Item: Completed -->
+<div class="group p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex items-start gap-6 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-secondary"></div>
+<div class="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
+<span class="material-symbols-outlined">verified_user</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-headline font-semibold text-on-surface">Vector Semantic Search: Q4 Projections</h3>
+<span class="text-[10px] font-headline text-secondary uppercase tracking-widest">Completed</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed max-w-2xl">Processed 42.5k nodes across the primary corpus. Cross-referencing identified 12 anomalies in the financial metadata layer.</p>
+<div class="mt-4 flex gap-4">
+<span class="text-[10px] font-label text-slate-500">LATENCY: 142MS</span>
+<span class="text-[10px] font-label text-slate-500">CONFIDENCE: 98.4%</span>
+</div>
+</div>
+<button class="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-white">open_in_new</button>
+</div>
+<!-- Query Item: Processing -->
+<div class="group p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex items-start gap-6 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined animate-pulse">sync</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-headline font-semibold text-on-surface">Recursive Reasoning: Legal Precedents</h3>
+<span class="text-[10px] font-headline text-primary uppercase tracking-widest">Processing...</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed max-w-2xl">Generating synthetic paths for case 82-B. Analyzing structural dependencies in document sub-trees.</p>
+<div class="mt-4 w-full h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[65%]"></div>
+</div>
+</div>
+</div>
+<!-- Query Item: Failed -->
+<div class="group p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex items-start gap-6 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+<div class="w-12 h-12 rounded-xl bg-error/10 flex items-center justify-center text-error shrink-0">
+<span class="material-symbols-outlined">report_problem</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-headline font-semibold text-on-surface">Metadata Extraction: Archive_772</h3>
+<span class="text-[10px] font-headline text-error uppercase tracking-widest">Failed</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed max-w-2xl">Schema mismatch detected at index 409. The document format (v1.2) is incompatible with the current extraction engine.</p>
+<div class="mt-4">
+<button class="text-[10px] font-headline uppercase tracking-widest text-on-error-container bg-error-container px-3 py-1 rounded-md">Retry with fallback</button>
+</div>
+</div>
+</div>
+<!-- More Feed Content -->
+<div class="group p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex items-start gap-6 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-secondary"></div>
+<div class="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
+<span class="material-symbols-outlined">auto_graph</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-headline font-semibold text-on-surface">Trend Synthesis: Emerging Risk Factors</h3>
+<span class="text-[10px] font-headline text-secondary uppercase tracking-widest">Completed</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed max-w-2xl">Aggregation of news cycles and internal reports complete. Clustering algorithm identified 3 new risk dimensions.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Right: Corpus Metrics -->
+<aside class="col-span-12 lg:col-span-4 space-y-8">
+<div>
+<span class="font-headline uppercase tracking-widest text-[10px] text-secondary">System Health</span>
+<h2 class="text-2xl font-headline font-bold text-on-surface mt-1">Corpus Metrics</h2>
+</div>
+<div class="grid grid-cols-1 gap-4">
+<!-- Metric Card 1 -->
+<div class="glass-panel p-6 rounded-3xl ghost-border overflow-hidden relative group">
+<div class="absolute -right-4 -bottom-4 opacity-5 scale-150 transition-transform group-hover:scale-125 duration-700">
+<span class="material-symbols-outlined text-9xl">article</span>
+</div>
+<p class="text-[10px] font-headline uppercase tracking-widest text-slate-400 mb-2">Total Documents</p>
+<div class="flex items-baseline gap-2">
+<span class="text-5xl font-headline font-bold kinetic-text">1,402</span>
+<span class="text-secondary text-sm font-label">+12%</span>
+</div>
+<div class="mt-6 flex justify-between items-center text-[10px] font-headline uppercase tracking-widest text-slate-500">
+<span>Storage Used: 4.2 TB</span>
+<span>Peak Capacity</span>
+</div>
+</div>
+<!-- Metric Card 2 -->
+<div class="glass-panel p-6 rounded-3xl ghost-border overflow-hidden relative group">
+<div class="absolute -right-4 -bottom-4 opacity-5 scale-150 transition-transform group-hover:scale-125 duration-700">
+<span class="material-symbols-outlined text-9xl">schema</span>
+</div>
+<p class="text-[10px] font-headline uppercase tracking-widest text-slate-400 mb-2">Indexed Vectors</p>
+<div class="flex items-baseline gap-2">
+<span class="text-5xl font-headline font-bold kinetic-text">4.2M</span>
+<span class="text-secondary text-sm font-label">Global</span>
+</div>
+<div class="mt-6 space-y-2">
+<div class="flex justify-between text-[10px] font-headline tracking-widest uppercase">
+<span class="text-slate-500">Dimension Density</span>
+<span class="text-on-surface">High</span>
+</div>
+<div class="h-1 w-full bg-white/5 rounded-full">
+<div class="h-full bg-secondary w-4/5 shadow-[0_0_8px_rgba(116,209,255,0.4)]"></div>
+</div>
+</div>
+</div>
+<!-- Visual Summary Chart Placeholder -->
+<div class="bg-surface-container-highest p-6 rounded-3xl relative overflow-hidden group min-h-[200px]">
+<img class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity" data-alt="abstract 3d visualization of data nodes and neural network lines with glowing purple and cyan accents on dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCF6oADpRos3ZR6H6Bdp7AmOZ94a6piZ2_qScBGnfnqxld2niVOvvx7saNxxfCE3vR3rherlrR6QZ5qmARbUleDMzyTMAyV-QMMvSyQP82JqpUXp94v3w_NNxHZRaRnrjzSXaoUxYxeK5mhMpqAcjouWTANm0_IVltjX-cGVOwufo1WqTwtIqWD8JfEQtV346T5wIGFYcMvz4-8GvYfJEtHMlFUIiHrCsY4qs6SBV8yIz8AI4VY_SEM-imPcJYpqaMzZhgX339qshaL"/>
+<div class="relative z-10">
+<p class="text-[10px] font-headline uppercase tracking-widest text-primary mb-4">Network Topology</p>
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="text-xs font-headline tracking-tight">Active Nodes: 842</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="text-xs font-headline tracking-tight">Syncing: 12</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Recent Contributors -->
+<div class="space-y-4">
+<p class="text-[10px] font-headline uppercase tracking-widest text-slate-500">Active Observatories</p>
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full border-2 border-surface-container ring-2 ring-primary/20 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="portrait of a man with glasses looking into the camera with soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCS4E-Mq_ncnbw3WHfqnZvCYb70m9M2U2V_zvUoaO1vPsx9Rfp8-plq8CMnD43AKNHvx4kJtluSdbQuaShmIJiGOBG_vBpAMTni1EeQFlEnO0621i4J3_JRSjhkLb0eik8rkQ-0nuK3zZAWX6P6hiqlld_p75tH0MYLOgU4JWTLx1DK9K9SyycMvoS3fbQOwRvFtIt-Mfe5wds0fbdr7cm1H6MagHTkuRbsoXgpt8oOLZTWSE2fk4hdAoY41jG7W_GX5DF4BvZIWbbq"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container ring-2 ring-primary/20 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="professional woman smiling with soft natural window light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCC_UYmgbWPIQIzFucFG_hsJmkd_kVB41WUr2y5_bnPmmc_IBswcbPLjY4uRMwkFqtuKF58neE28Eijr2CWWkjU63gKhlIv9Cy5GXkSoSIpAyM8lP2e4sODA_VRxh-_5M1XHbYC6K-cxMl-CxZmo6zN23LhfO5Hsa96FXg29VBOrCPOKNs4rtWIv7RY9sK8txBO4mHl1YvvkVmGt0cB_b2EsADl5ifb9sEzlpf65FngKSI8H0Z7_Hb9MuWXkE99PIS1meCWWfQF5OPi"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container ring-2 ring-primary/20 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="man in business attire with focused expression and blurred office background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDqRnQbKlqVE-Pq_NXeHuJVKDZwiOlwrbmMvUA_B56AXtMQOwogvhJzA8dGA-w2pFOyfuAmukcO6k5n01NHPdJxB54TJgOn3_2IslX_DwbUSycfyNx_AxQ3HxDNL_hg7BahGI0D7lqxxpsj7yuxutbUsnbY0hu_lUA9Nxn5kXQdwk4ADC3L78QPBwdua5ARkFowtjpX1Qz9roXuzwKI31TjkSdTd8HziUGG5GE4uEH_uAnDeTkRDJsgrPmW7EAL51SQ3vgp22qQhADv"/>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center border-2 border-surface-container text-[10px] font-headline">+12</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+<!-- Floating Action Button -->
+<button class="fixed bottom-8 right-8 w-14 h-14 rounded-2xl kinetic-gradient shadow-2xl shadow-primary/30 flex items-center justify-center text-white transition-transform active:scale-90 hover:scale-105 group">
+<span class="material-symbols-outlined text-2xl group-hover:rotate-90 transition-transform duration-300">add</span>
+</button>
+</body></html>

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#74d1ff",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#261900",
+                        "tertiary-fixed": "#ffdea3",
+                        "surface-bright": "#31394a",
+                        "surface-tint": "#d8b9ff",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed": "#001e2b",
+                        "on-primary-fixed-variant": "#6017b0",
+                        "on-secondary-container": "#002e3f",
+                        "tertiary-container": "#b88917",
+                        "surface-container-low": "#131c2b",
+                        "on-primary-fixed": "#290055",
+                        "surface-container-lowest": "#060e1d",
+                        "secondary-container": "#069ccd",
+                        "primary-fixed": "#eddcff",
+                        "on-primary": "#450087",
+                        "primary-fixed-dim": "#d8b9ff",
+                        "inverse-primary": "#7939c9",
+                        "error": "#ffb4ab",
+                        "surface": "#0b1323",
+                        "on-background": "#dbe2f8",
+                        "tertiary-fixed-dim": "#f4be4c",
+                        "outline-variant": "#4b4453",
+                        "on-secondary": "#003548",
+                        "surface-dim": "#0b1323",
+                        "inverse-on-surface": "#283041",
+                        "on-tertiary-container": "#382700",
+                        "on-error": "#690005",
+                        "on-surface": "#dbe2f8",
+                        "on-tertiary": "#402d00",
+                        "inverse-surface": "#dbe2f8",
+                        "secondary-fixed": "#c1e8ff",
+                        "background": "#0b1323",
+                        "secondary-fixed-dim": "#74d1ff",
+                        "primary": "#d8b9ff",
+                        "surface-container-highest": "#2d3546",
+                        "tertiary": "#f4be4c",
+                        "on-tertiary-fixed-variant": "#5d4200",
+                        "on-secondary-fixed-variant": "#004d67",
+                        "surface-variant": "#2d3546",
+                        "surface-container": "#18202f",
+                        "on-surface-variant": "#cdc3d5",
+                        "outline": "#978d9f",
+                        "on-primary-container": "#3c0077",
+                        "primary-container": "#ae72ff",
+                        "surface-container-high": "#222a3a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, hsl(262, 80%, 70%), hsl(200, 90%, 65%));
+        }
+        .kinetic-text-gradient {
+            background: linear-gradient(135deg, hsl(262, 80%, 70%), hsl(200, 90%, 65%));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2d3546;
+            border-radius: 10px;
+        }
+        @keyframes pulse-purple {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .cursor-blink {
+            animation: pulse-purple 1s infinite;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30 h-screen flex overflow-hidden">
+<!-- Shared SideNavBar -->
+<aside class="h-screen w-64 border-r border-white/5 bg-[#0b1323] flex flex-col p-4 shadow-[0_20px_40px_rgba(219,226,248,0.06)] shrink-0 z-50">
+<div class="mb-10 px-2 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg kinetic-gradient flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">hub</span>
+</div>
+<div>
+<h1 class="text-xl font-bold bg-gradient-to-r from-[#9f62f1] to-[#64b5f6] bg-clip-text text-transparent font-headline tracking-tight">Kinetic Observatory</h1>
+<p class="text-[10px] text-slate-500 font-headline uppercase tracking-widest leading-none">Document Intelligence</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-[20px]">hub</span>
+<span class="font-headline text-sm font-medium">Intelligence Hub</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-[20px]">description</span>
+<span class="font-headline text-sm font-medium">Document Viewer</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-[20px]">account_tree</span>
+<span class="font-headline text-sm font-medium">Reasoning Graph</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-[#9f62f1] bg-[#2d3546] rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">forum</span>
+<span class="font-headline text-sm font-medium">Chat History</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-headline text-sm font-medium">System Settings</span>
+</a>
+</nav>
+<div class="mt-auto p-2 rounded-xl bg-surface-container-low border border-white/5 flex items-center gap-3">
+<img class="w-10 h-10 rounded-full object-cover" data-alt="Professional studio portrait of a technology analyst with short dark hair and a neutral expression against a dark blue background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoEBhOUfQuo07fK_1I6MnWWMOrZnTW13Wd2OkrYxqwuWK0_Z_wWxohuu8kJ1tlX3qsuIANqiyR-Z07Dkis1IyKLJkWzKIBunttoG0dRGLsuG6xGi-fcCwDiOvkAIn_anvYvcv7gdimoIXQOi1SchEXNt2UTSvnteIu-D-mGET9ea39rWHYf_CYW5pRI2KmSs1G5fxhq0TKzIjAN3K4dbS10B8xVxaUF68hjGRpFIsHhbEpX2sFK7Kgkzug0OHXkRsqyxng_h90nBMM"/>
+<div class="overflow-hidden">
+<p class="text-xs font-bold text-on-surface truncate">Marcus Vance</p>
+<p class="text-[10px] text-slate-500 truncate">Senior Analyst</p>
+</div>
+</div>
+</aside>
+<main class="flex-1 flex flex-col relative bg-background">
+<!-- Shared TopAppBar -->
+<header class="h-16 flex justify-between items-center px-8 w-full bg-white/5 backdrop-blur-md z-40 border-b border-white/5">
+<div class="flex items-center gap-8">
+<span class="font-headline font-black text-[#9f62f1] uppercase tracking-widest text-[10px]">DocIntel Hub</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="font-headline uppercase tracking-widest text-[10px] text-slate-400 hover:text-white transition-opacity" href="#">Analysis</a>
+<a class="font-headline uppercase tracking-widest text-[10px] text-slate-400 hover:text-white transition-opacity" href="#">Metadata</a>
+<a class="font-headline uppercase tracking-widest text-[10px] text-slate-400 hover:text-white transition-opacity" href="#">Export</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
+<input class="bg-surface-container-lowest border-none border-b-2 border-outline-variant/30 focus:border-primary text-[10px] font-headline tracking-widest py-2 pl-10 pr-4 w-64 text-on-surface placeholder:text-slate-600 focus:ring-0" placeholder="QUERY DATABASE..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-400 hover:text-white transition-opacity">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="text-slate-400 hover:text-white transition-opacity">
+<span class="material-symbols-outlined text-[20px]">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Workspace: Split Pane -->
+<section class="flex-1 flex overflow-hidden">
+<!-- Left Pane: Intelligence Chat Log -->
+<div class="flex-1 flex flex-col border-r border-white/5 bg-surface-container-low/30 overflow-y-auto custom-scrollbar p-8">
+<div class="max-w-3xl mx-auto w-full space-y-12 pb-32">
+<!-- Chat Header Info -->
+<div class="flex items-center justify-between opacity-50 mb-8">
+<span class="font-headline text-[10px] uppercase tracking-[0.2em]">Session ID: INT-9442-X</span>
+<span class="font-headline text-[10px] uppercase tracking-[0.2em]">Active Logic: Neural-7-Turbo</span>
+</div>
+<!-- User Query -->
+<div class="flex flex-col items-end gap-2">
+<div class="bg-surface-container-highest px-6 py-4 rounded-2xl rounded-tr-none max-w-[85%] shadow-xl">
+<p class="text-on-surface leading-relaxed text-sm">What is our policy on remote work equipment limits?</p>
+</div>
+<span class="font-headline text-[9px] uppercase tracking-widest text-slate-500">14:02 PM • Sent</span>
+</div>
+<!-- AI Response -->
+<div class="flex flex-col items-start gap-4">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded kinetic-gradient flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-white">bolt</span>
+</div>
+<span class="font-headline text-[10px] font-bold text-primary uppercase tracking-widest">Intelligence Unit</span>
+</div>
+<div class="bg-surface-container px-8 py-7 rounded-2xl rounded-tl-none border border-white/5 shadow-2xl space-y-4">
+<p class="text-on-surface leading-relaxed">
+                                According to the latest <span class="text-primary font-medium underline decoration-primary/30 cursor-pointer">Global Operations Handbook</span>, remote work equipment limits are structured by seniority level. 
+                            </p>
+<p class="text-on-surface leading-relaxed">
+                                Standard employees are entitled to a hardware stipend of $2,500 every 36 months for core workstations. Supplementary peripherals, including ergonomic seating and displays, are capped at $1,200 annually <span class="px-1.5 py-0.5 rounded-sm bg-primary/20 text-primary font-mono text-[10px] font-bold border border-primary/30 cursor-help">[Doc-14]</span>.
+                            </p>
+<p class="text-on-surface leading-relaxed">
+                                Requests exceeding these amounts require approval from the regional department lead and must be logged via the Procurement Intelligence Portal.
+                            </p>
+<div class="pt-4 flex flex-wrap gap-2">
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-[10px] font-headline uppercase tracking-wider text-slate-400 border border-white/5 hover:border-primary/50 cursor-pointer transition-colors">View Doc-14</span>
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-[10px] font-headline uppercase tracking-wider text-slate-400 border border-white/5 hover:border-primary/50 cursor-pointer transition-colors">Compare with 2023 Policy</span>
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-[10px] font-headline uppercase tracking-wider text-slate-400 border border-white/5 hover:border-primary/50 cursor-pointer transition-colors">Draft Email Summary</span>
+</div>
+</div>
+<span class="font-headline text-[9px] uppercase tracking-widest text-slate-500">14:02 PM • Synthesized</span>
+</div>
+</div>
+</div>
+<!-- Right Pane: Awaiting Selection -->
+<div class="w-[400px] hidden xl:flex flex-col items-center justify-center bg-surface p-12 text-center relative overflow-hidden">
+<!-- Atmospheric Background Detail -->
+<div class="absolute inset-0 pointer-events-none opacity-20">
+<div class="absolute top-[-10%] right-[-10%] w-96 h-96 bg-primary/20 blur-[120px] rounded-full"></div>
+<div class="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-secondary/10 blur-[120px] rounded-full"></div>
+</div>
+<div class="relative z-10 flex flex-col items-center">
+<div class="w-20 h-20 mb-8 border border-white/10 rounded-3xl flex items-center justify-center relative">
+<div class="absolute inset-0 bg-white/5 animate-pulse rounded-3xl"></div>
+<span class="material-symbols-outlined text-4xl text-slate-600">visibility_off</span>
+</div>
+<h3 class="font-headline text-lg font-medium text-slate-400 mb-2">Awaiting Selection</h3>
+<p class="text-slate-600 text-sm max-w-[240px] leading-relaxed">
+                        Select a citation, document, or graph node to inspect detailed metadata and origins.
+                    </p>
+</div>
+<!-- Technical Footer Detail -->
+<div class="absolute bottom-8 left-8 right-8 border-t border-white/5 pt-4 flex justify-between items-center opacity-30">
+<div class="text-[9px] font-mono uppercase tracking-widest">Buffer Status: IDLE</div>
+<div class="text-[9px] font-mono uppercase tracking-widest">Ready</div>
+</div>
+</div>
+</section>
+<!-- Fixed Command Input Bar -->
+<footer class="absolute bottom-0 left-0 right-0 p-8 z-50 bg-gradient-to-t from-background via-background/90 to-transparent">
+<div class="max-w-4xl mx-auto relative group">
+<div class="absolute inset-0 bg-primary/10 blur-xl opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
+<div class="relative bg-surface-container-highest/80 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex items-center p-2">
+<button class="w-12 h-12 flex items-center justify-center text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<div class="flex-1 relative flex items-center px-2">
+<div class="flex items-center w-full">
+<span class="font-headline uppercase tracking-[0.3em] text-[10px] text-primary font-bold mr-3">System://</span>
+<div class="relative flex-1">
+<input class="w-full bg-transparent border-none focus:ring-0 text-on-surface font-body text-sm placeholder:text-slate-600 py-3" placeholder="Type a command or query..." type="text"/>
+<div class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 bg-primary cursor-blink ml-[-2px] pointer-events-none hidden group-focus-within:block"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-1 px-2 border-l border-white/5 ml-2">
+<button class="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">mic</span>
+</button>
+<button class="px-6 py-3 rounded-xl kinetic-gradient text-white font-headline text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-transform">
+                            Execute
+                            <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Quick Suggestion Chips -->
+<div class="mt-4 flex justify-center gap-3">
+<button class="text-[9px] font-headline uppercase tracking-widest text-slate-500 hover:text-primary transition-colors">/search docs</button>
+<span class="text-white/10">•</span>
+<button class="text-[9px] font-headline uppercase tracking-widest text-slate-500 hover:text-primary transition-colors">/summarize</button>
+<span class="text-white/10">•</span>
+<button class="text-[9px] font-headline uppercase tracking-widest text-slate-500 hover:text-primary transition-colors">/graph analysis</button>
+</div>
+</div>
+</footer>
+</main>
+</body></html>

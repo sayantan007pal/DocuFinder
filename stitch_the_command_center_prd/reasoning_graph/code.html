@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DocIntel Hub - Reasoning Graph</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#74d1ff",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#261900",
+                        "tertiary-fixed": "#ffdea3",
+                        "surface-bright": "#31394a",
+                        "surface-tint": "#d8b9ff",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed": "#001e2b",
+                        "on-primary-fixed-variant": "#6017b0",
+                        "on-secondary-container": "#002e3f",
+                        "tertiary-container": "#b88917",
+                        "surface-container-low": "#131c2b",
+                        "on-primary-fixed": "#290055",
+                        "surface-container-lowest": "#060e1d",
+                        "secondary-container": "#069ccd",
+                        "primary-fixed": "#eddcff",
+                        "on-primary": "#450087",
+                        "primary-fixed-dim": "#d8b9ff",
+                        "inverse-primary": "#7939c9",
+                        "error": "#ffb4ab",
+                        "surface": "#0b1323",
+                        "on-background": "#dbe2f8",
+                        "tertiary-fixed-dim": "#f4be4c",
+                        "outline-variant": "#4b4453",
+                        "on-secondary": "#003548",
+                        "surface-dim": "#0b1323",
+                        "inverse-on-surface": "#283041",
+                        "on-tertiary-container": "#382700",
+                        "on-error": "#690005",
+                        "on-surface": "#dbe2f8",
+                        "on-tertiary": "#402d00",
+                        "inverse-surface": "#dbe2f8",
+                        "secondary-fixed": "#c1e8ff",
+                        "background": "#0b1323",
+                        "secondary-fixed-dim": "#74d1ff",
+                        "primary": "#d8b9ff",
+                        "surface-container-highest": "#2d3546",
+                        "tertiary": "#f4be4c",
+                        "on-tertiary-fixed-variant": "#5d4200",
+                        "on-secondary-fixed-variant": "#004d67",
+                        "surface-variant": "#2d3546",
+                        "surface-container": "#18202f",
+                        "on-surface-variant": "#cdc3d5",
+                        "outline": "#978d9f",
+                        "on-primary-container": "#3c0077",
+                        "primary-container": "#ae72ff",
+                        "surface-container-high": "#222a3a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .canvas-grid {
+            background-image: radial-gradient(circle, #2d3546 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, hsl(262, 80%, 70%), hsl(200, 90%, 65%));
+        }
+        .glow-purple {
+            box-shadow: 0 0 20px rgba(159, 98, 241, 0.3);
+        }
+        .glow-red {
+            box-shadow: 0 0 15px rgba(255, 180, 171, 0.4);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body overflow-hidden">
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 w-full z-50 bg-white/5 backdrop-blur-md flex justify-between items-center px-8 h-16 w-full">
+<div class="flex items-center gap-6">
+<span class="font-black text-[#9f62f1] font-headline uppercase tracking-widest text-[10px]">DocIntel Hub</span>
+<nav class="hidden md:flex gap-8">
+<a class="text-slate-400 font-headline uppercase tracking-widest text-[10px] hover:text-white transition-opacity opacity-80 hover:opacity-100" href="#">Analysis</a>
+<a class="text-slate-400 font-headline uppercase tracking-widest text-[10px] hover:text-white transition-opacity opacity-80 hover:opacity-100" href="#">Metadata</a>
+<a class="text-slate-400 font-headline uppercase tracking-widest text-[10px] hover:text-white transition-opacity opacity-80 hover:opacity-100" href="#">Export</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-slate-400 hover:text-white transition-opacity opacity-80 hover:opacity-100">notifications</button>
+<div class="h-8 w-8 rounded-full overflow-hidden bg-surface-container-highest">
+<img alt="User profile" data-alt="Close-up professional headshot of a diverse tech executive in a dark minimalist studio setting with soft purple rim lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYRj9q_-N6SITiBNmB_cQB__NPS-MLvBGit7RnUbX9jQKGgNJY23UUnBMCNb4TZJ5feo2ErzHzg9ZM64ev62O6PjeaIYC9eWa01d1qAx6TKL_BbQD0AXH3e604Hl5X2b7FZpddoFyhrbmiV8iefa75taL9PYUVodTEIPfMUoLJAFaHQUXgYiLuf9AK3qfQQ4lVABPy2HYmFYTMQYDLT5epYgksvCmgTjRWQQ-CMdmPho9j4O6nOwYSSARxBoN31jtk_fotFkCGcz1j"/>
+</div>
+</div>
+</header>
+<div class="flex h-screen pt-16">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 border-r border-white/5 bg-[#0b1323] flex flex-col h-full p-4 hidden md:flex">
+<div class="mb-8 px-2">
+<h1 class="text-xl font-bold bg-gradient-to-r from-[#9f62f1] to-[#64b5f6] bg-clip-text text-transparent font-['Space_Grotesk'] tracking-tight">Kinetic Observatory</h1>
+<p class="text-[10px] uppercase tracking-widest text-slate-500 font-headline mt-1">Document Intelligence</p>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span class="font-headline tracking-tight">Intelligence Hub</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="font-headline tracking-tight">Document Viewer</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#9f62f1] bg-[#2d3546] rounded-lg transition-colors scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="font-headline tracking-tight">Reasoning Graph</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">forum</span>
+<span class="font-headline tracking-tight">Chat History</span>
+</a>
+<div class="pt-4 mt-4 border-t border-white/5">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-headline tracking-tight">System Settings</span>
+</a>
+</div>
+</nav>
+</aside>
+<!-- Main Content: Reasoning Graph Canvas -->
+<main class="flex-1 relative overflow-hidden bg-background canvas-grid">
+<!-- Canvas HUD -->
+<div class="absolute top-8 left-8 z-10 space-y-1">
+<span class="text-[10px] uppercase tracking-[0.2em] text-primary/60 font-headline">Operational View</span>
+<h2 class="text-3xl font-headline font-bold tracking-tighter text-on-background">The Command Center</h2>
+</div>
+<div class="absolute top-8 right-8 z-10 flex gap-4">
+<div class="bg-surface-container-low px-4 py-2 rounded-xl flex items-center gap-3 border border-white/5 backdrop-blur-md">
+<div class="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-xs font-headline text-slate-300">Live Synthesis Active</span>
+</div>
+</div>
+<!-- SVG Connecting Lines Layer -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none">
+<!-- HR Policy Connection -->
+<path d="M 600 400 L 350 250" fill="none" opacity="0.6" stroke="url(#lineGradient)" stroke-dasharray="8 4" stroke-width="1.5"></path>
+<!-- IT Hardware Connection -->
+<path d="M 600 400 L 850 250" fill="none" opacity="0.6" stroke="url(#lineGradient)" stroke-dasharray="8 4" stroke-width="1.5"></path>
+<!-- Finance Connection -->
+<path d="M 600 400 L 600 650" fill="none" opacity="0.6" stroke="url(#lineGradient)" stroke-dasharray="8 4" stroke-width="1.5"></path>
+<defs>
+<lineargradient id="lineGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#9f62f1;stop-opacity:0.8"></stop>
+<stop offset="100%" style="stop-color:#64b5f6;stop-opacity:0.8"></stop>
+</lineargradient>
+</defs>
+</svg>
+<!-- Graph Nodes -->
+<div class="absolute inset-0 w-full h-full flex items-center justify-center">
+<!-- Central Synthesis Node -->
+<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+<div class="w-48 h-48 rounded-full p-1 kinetic-gradient glow-purple flex items-center justify-center relative">
+<div class="w-full h-full rounded-full bg-[#0b1323] flex flex-col items-center justify-center text-center p-6">
+<span class="material-symbols-outlined text-primary text-4xl mb-2">auto_awesome</span>
+<span class="font-headline font-bold text-lg leading-tight">Synthesis Node</span>
+<span class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Core Engine</span>
+</div>
+<!-- Status Indicator -->
+<div class="absolute -top-2 -right-2 bg-error-container text-on-error-container px-3 py-1 rounded-full text-[10px] font-bold glow-red flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">warning</span>
+                            CONFLICT
+                        </div>
+</div>
+</div>
+<!-- HR Policy Node (Top Left) -->
+<div class="absolute left-[20%] top-[25%] z-20">
+<div class="group cursor-pointer">
+<div class="bg-surface-container border border-[#9f62f1]/30 p-4 rounded-xl w-56 transition-all hover:bg-surface-container-high hover:scale-105">
+<div class="flex items-center gap-3 mb-3">
+<div class="p-2 bg-[#9f62f1]/10 rounded-lg">
+<span class="material-symbols-outlined text-[#9f62f1]">badge</span>
+</div>
+<div>
+<h4 class="font-headline font-semibold text-sm">HR Policy</h4>
+<span class="text-[10px] text-slate-500">v2.4 - Restricted</span>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-[#9f62f1] w-[85%]"></div>
+</div>
+<span class="text-[9px] text-slate-400">Semantic density: 0.85</span>
+</div>
+</div>
+</div>
+</div>
+<!-- IT Hardware Node (Top Right) -->
+<div class="absolute right-[20%] top-[25%] z-20">
+<div class="group cursor-pointer">
+<div class="bg-surface-container border border-[#9f62f1]/30 p-4 rounded-xl w-56 transition-all hover:bg-surface-container-high hover:scale-105">
+<div class="flex items-center gap-3 mb-3">
+<div class="p-2 bg-[#9f62f1]/10 rounded-lg">
+<span class="material-symbols-outlined text-[#9f62f1]">computer</span>
+</div>
+<div>
+<h4 class="font-headline font-semibold text-sm">IT Hardware</h4>
+<span class="text-[10px] text-slate-500">Inventory-2024</span>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-[#9f62f1] w-[62%]"></div>
+</div>
+<span class="text-[9px] text-slate-400">Semantic density: 0.62</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Finance Node (Bottom Center) -->
+<div class="absolute left-1/2 bottom-[20%] -translate-x-1/2 z-20">
+<div class="group cursor-pointer">
+<div class="bg-surface-container border border-error/50 p-4 rounded-xl w-56 transition-all hover:bg-surface-container-high hover:scale-105 shadow-[0_0_15px_rgba(255,180,171,0.1)]">
+<div class="flex items-center gap-3 mb-3">
+<div class="p-2 bg-error-container/20 rounded-lg">
+<span class="material-symbols-outlined text-error">payments</span>
+</div>
+<div>
+<h4 class="font-headline font-semibold text-sm">Finance</h4>
+<span class="text-[10px] text-error">Budget Overlap Detected</span>
+</div>
+</div>
+<div class="space-y-1">
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-error w-[92%]"></div>
+</div>
+<span class="text-[9px] text-slate-400">Conflict Score: 0.92</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Canvas Controls -->
+<div class="absolute bottom-8 right-8 z-30 flex flex-col gap-2">
+<button class="w-10 h-10 bg-surface-container-high text-on-surface border border-white/10 rounded-lg flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined">add</span>
+</button>
+<button class="w-10 h-10 bg-surface-container-high text-on-surface border border-white/10 rounded-lg flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<button class="w-10 h-10 bg-surface-container-high text-on-surface border border-white/10 rounded-lg flex items-center justify-center hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined">center_focus_weak</span>
+</button>
+</div>
+<!-- Detail Overlay (Right Side) -->
+<div class="absolute top-24 right-8 w-80 z-30 pointer-events-none">
+<div class="bg-surface-container-low/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6 pointer-events-auto shadow-2xl">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg">Reasoning Context</h3>
+<span class="material-symbols-outlined text-slate-500 text-sm">info</span>
+</div>
+<div class="space-y-6">
+<div>
+<span class="text-[10px] uppercase tracking-widest text-primary font-bold">Primary Insight</span>
+<p class="text-sm text-slate-300 mt-2 leading-relaxed">
+                                Conflict identified between <span class="text-on-surface font-semibold">HR Policy Clause 4.2</span> and <span class="text-on-surface font-semibold">Q3 Budgetary Allocations</span>.
+                            </p>
+</div>
+<div class="pt-4 border-t border-white/5">
+<span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Suggested Actions</span>
+<div class="mt-3 space-y-2">
+<button class="w-full text-left p-3 rounded-lg bg-surface-container hover:bg-surface-container-highest transition-colors flex items-center justify-between group">
+<span class="text-xs font-medium">Reconcile Metadata</span>
+<span class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100">arrow_forward</span>
+</button>
+<button class="w-full text-left p-3 rounded-lg bg-surface-container hover:bg-surface-container-highest transition-colors flex items-center justify-between group">
+<span class="text-xs font-medium">Generate Resolution Brief</span>
+<span class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100">description</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Background Decoration -->
+<div class="fixed top-0 left-0 w-full h-full pointer-events-none z-[-1] opacity-20">
+<div class="absolute top-1/4 left-1/3 w-96 h-96 bg-primary/30 rounded-full blur-[120px]"></div>
+<div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-[120px]"></div>
+</div>
+</body></html>
