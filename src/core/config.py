@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "gemma4:e4b"
     ollama_api_key: str = ""
+    ollama_request_timeout: float = 300.0          # Timeout in seconds (increase for large models)
 
     # ── Embedding ──────────────────────────────────────────────
     embed_model_name: str = "BAAI/bge-large-en-v1.5"
@@ -63,7 +64,7 @@ class Settings(BaseSettings):
     parser_scanned: Optional[str] = None
     parser_complex: Optional[str] = None
     parser_mixed: Optional[str] = None
-    parser_docx: Optional[str] = None
+    parser_docx: Optional[str] = None              # python-docx | liteparse | unstructured | llamaparse
 
     # ── LlamaCloud ─────────────────────────────────────────────
     llama_cloud_api_key: str = ""

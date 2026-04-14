@@ -228,12 +228,12 @@ export default function ReasoningGraphPage() {
                 </defs>
 
                 {/* Draw edges from query to documents */}
-                {nodes.slice(1).map((node) => {
+                {nodes.slice(1).map((node, index) => {
                   const queryNode = nodes[0];
                   const opacity = node.score ? 0.3 + node.score * 0.7 : 0.5;
                   return (
                     <line
-                      key={`edge-${node.id}`}
+                      key={`edge-${node.id}-${index}`}
                       x1={queryNode.x}
                       y1={queryNode.y}
                       x2={node.x}
@@ -247,9 +247,9 @@ export default function ReasoningGraphPage() {
                 })}
 
                 {/* Draw nodes */}
-                {nodes.map((node) => (
+                {nodes.map((node, index) => (
                   <g
-                    key={node.id}
+                    key={`${node.id}-${index}`}
                     transform={`translate(${node.x}, ${node.y})`}
                     onClick={() => handleNodeClick(node)}
                     style={{ cursor: node.type === "document" ? "pointer" : "default" }}

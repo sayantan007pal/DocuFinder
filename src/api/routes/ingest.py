@@ -208,3 +208,87 @@ async def get_ingest_status(
         error_msg=doc.error_msg,
         ingested_at=doc.ingested_at.isoformat() if doc.ingested_at else None,
     )
+
+
+@router.post("/retry/{doc_id}", response_model=UploadResponse)
+async def retry_document_ingestion(
+    doc_id: str,
+    auth: tuple[User, str] = Depends(get_current_user_dep),
+) -> UploadResponse:
+    """
+    Retry ingestion for a document that failed or is stuck.
+    Only works for documents with status: failed, queued, or processing.
+    """
+    user, tenant_id = auth
+
+    doc = await DocRecord.get(PydanticObjectId(doc_id))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Tenant isolation
+    if str(doc.tenant_id) != tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Only allow retry for non-completed documents
+    if doc.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document already successfully processed. Cannot retry.",
+        )
+
+    # Check if file still exists
+    if not os.path.exists(doc.storage_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original file no longer exists. Please upload again.",
+        )
+
+    # Reset document status
+    doc.status = "queued"
+    doc.error_msg = None
+    doc.updated_at = datetime.utcnow()
+    await doc.save()
+
+    # Dispatch new Celery task
+    task_id = None
+    try:
+        from src.ingestion.tasks import ingest_document_task
+        task = ingest_document_task.apply_async(
+            args=[doc.storage_path, str(doc.id), tenant_id],
+            queue="ingest",
+        )
+        task_id = task.id
+
+        # Update or create IngestionJob
+        job = await IngestionJob.find_one(IngestionJob.document_id == doc.id)
+        if job:
+            job.celery_task_id = task_id
+            job.status = "pending"
+            job.error_detail = None
+            job.started_at = None
+            job.finished_at = None
+            await job.save()
+        else:
+            job = IngestionJob(
+                document_id=doc.id,
+                celery_task_id=task_id,
+                status="pending",
+            )
+            await job.insert()
+    except Exception as e:
+        log.warning("celery_dispatch_failed", error=str(e),
+                    doc_id=str(doc.id),
+                    hint="Start Celery worker: celery -A src.ingestion.tasks worker")
+
+    log.info("document_retry_queued",
+             doc_id=str(doc.id), filename=doc.filename,
+             tenant_id=tenant_id, task_id=task_id)
+
+    return UploadResponse(
+        doc_id=str(doc.id),
+        filename=doc.filename,
+        file_size=doc.file_size,
+        status="queued",
+        task_id=task_id,
+        message="Document re-queued for ingestion.",
+    )

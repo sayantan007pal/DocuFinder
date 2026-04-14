@@ -49,6 +49,9 @@ dependencies = [
     "langchain-ollama>=0.2",
     "langchain-huggingface>=0.1",
 
+    # ── HuggingFace datasets (pinned for pyarrow compatibility) ───
+    "datasets>=3.0",
+
     # ── Evaluation ────────────────────────────────────────────────
     "ragas>=0.2",
 

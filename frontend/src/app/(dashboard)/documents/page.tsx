@@ -32,6 +32,7 @@ export default function DocumentMatrixPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(initialDocId);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
+  const [conflictInfo, setConflictInfo] = useState<{ filename: string; doc_id: string } | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch documents
@@ -63,11 +64,33 @@ export default function DocumentMatrixPage() {
     enabled: !!selectedDocId,
   });
 
-  // Upload mutation
+  // Retry mutation for failed documents
+  const retryMutation = useMutation({
+    mutationFn: (docId: string) => apiClient.post<UploadResponse>(`ingest/retry/${docId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+
+  // Upload mutation with conflict handling
   const uploadMutation = useMutation({
     mutationFn: (file: File) => apiClient.upload<UploadResponse>("ingest/upload", file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error: any) => {
+      if (error.isConflict) {
+        // Check the existing document's status
+        if (error.existingStatus === "completed") {
+          // Show popup for completed documents
+          setConflictInfo({ filename: error.filename, doc_id: error.doc_id });
+        } else {
+          // Auto-retry for queued/processing/failed documents
+          if (error.doc_id) {
+            retryMutation.mutate(error.doc_id);
+          }
+        }
+      }
     },
   });
 
@@ -152,6 +175,8 @@ export default function DocumentMatrixPage() {
                   doc={doc}
                   selected={doc.id === selectedDocId}
                   onSelect={() => setSelectedDocId(doc.id === selectedDocId ? null : doc.id)}
+                  onRetry={doc.status === "failed" ? () => retryMutation.mutate(doc.id) : undefined}
+                  retrying={retryMutation.isPending && retryMutation.variables === doc.id}
                 />
               ))
             )}
@@ -365,6 +390,18 @@ export default function DocumentMatrixPage() {
           uploading={uploadMutation.isPending}
         />
       )}
+
+      {/* Conflict Popup */}
+      {conflictInfo && (
+        <ConflictPopup
+          filename={conflictInfo.filename}
+          onClose={() => setConflictInfo(null)}
+          onViewDocument={() => {
+            setSelectedDocId(conflictInfo.doc_id);
+            setConflictInfo(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -373,11 +410,15 @@ export default function DocumentMatrixPage() {
 function DocumentListItem({ 
   doc, 
   selected, 
-  onSelect 
+  onSelect,
+  onRetry,
+  retrying,
 }: { 
   doc: Document; 
   selected: boolean; 
   onSelect: () => void;
+  onRetry?: () => void;
+  retrying?: boolean;
 }) {
   return (
     <GlassmorphicCard
@@ -430,7 +471,22 @@ function DocumentListItem({
           {doc.page_count} pages • {formatBytes(doc.file_size)}
         </p>
       </div>
-      <StatusBadge status={doc.status as any} size="sm" showIcon={false} />
+      {onRetry ? (
+        <KineticButton
+          variant="ghost"
+          size="sm"
+          icon={retrying ? Icons.processing : "refresh"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRetry();
+          }}
+          disabled={retrying}
+        >
+          {retrying ? "Retrying..." : "Retry"}
+        </KineticButton>
+      ) : (
+        <StatusBadge status={doc.status as any} size="sm" showIcon={false} />
+      )}
     </GlassmorphicCard>
   );
 }
@@ -590,6 +646,111 @@ function UploadDialog({
               </p>
             </div>
           )}
+        </div>
+      </GlassmorphicCard>
+    </div>
+  );
+}
+
+// Conflict Popup Component
+function ConflictPopup({ 
+  filename, 
+  onClose, 
+  onViewDocument 
+}: { 
+  filename: string; 
+  onClose: () => void; 
+  onViewDocument: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+      }}
+      onClick={onClose}
+    >
+      <GlassmorphicCard
+        variant="elevated"
+        onClick={(e) => e.stopPropagation()}
+        className="animate-scale-in"
+        style={{ width: 420, padding: 32 }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "hsl(45 90% 50% / 0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <Icon name="info" size={32} style={{ color: "hsl(45, 90%, 60%)" }} />
+          </div>
+          
+          <h2 className="font-display" style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: 12 }}>
+            File Already Processed
+          </h2>
+          
+          <p style={{ color: "hsl(215, 20%, 65%)", fontSize: 14, marginBottom: 8 }}>
+            This document has already been successfully processed:
+          </p>
+          
+          <p style={{ 
+            color: "hsl(210, 40%, 98%)", 
+            fontSize: 14, 
+            fontWeight: 500,
+            padding: "12px 16px",
+            background: "var(--surface-container-low)",
+            borderRadius: 8,
+            marginBottom: 24,
+            wordBreak: "break-all"
+          }}>
+            {filename}
+          </p>
+          
+          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                background: "var(--surface-container)",
+                border: "1px solid hsl(215, 20%, 25%)",
+                color: "hsl(215, 20%, 75%)",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              Close
+            </button>
+            <button
+              onClick={onViewDocument}
+              className="btn-primary-gradient"
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                border: "none",
+                color: "white",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              View Document
+            </button>
+          </div>
         </div>
       </GlassmorphicCard>
     </div>

@@ -92,7 +92,11 @@ def build_query_engine(tenant_id: str, top_k: int = 8) -> RetrieverQueryEngine:
     # Default: local Qdrant
     from src.core.qdrant_client import get_vector_store
     vector_store = get_vector_store(tenant_id)
-    index = VectorStoreIndex.from_vector_store(vector_store)
+    # Explicitly pass embed_model to avoid fallback to OpenAI when Settings wasn't configured
+    index = VectorStoreIndex.from_vector_store(
+        vector_store,
+        embed_model=get_embed_singleton(),
+    )
 
     retriever = VectorIndexRetriever(
         index=index,
@@ -164,6 +168,10 @@ async def search(
         cached = await valkey.get(cache_key)
         if cached:
             data = json.loads(cached)
+            # Convert cached dicts back to SourceNodeInfo objects
+            data["source_nodes"] = [
+                SourceNodeInfo(**node) for node in data.get("source_nodes", [])
+            ]
             return QueryResult(**{**data, "cached": True})
     except Exception:
         valkey = None  # Proceed without cache

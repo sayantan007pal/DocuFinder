@@ -22,6 +22,7 @@ class ParserProvider(str, Enum):
     UNSTRUCTURED = "unstructured"   # default: self-hosted Docker
     LITEPARSE = "liteparse"         # local-first, fast (~6s/doc)
     LLAMAPARSE = "llamaparse"       # LlamaCloud cloud API
+    PYTHONDOCX = "python-docx"      # pure Python DOCX parser (no LibreOffice)
 
 
 class ChunkingStrategy(str, Enum):
@@ -123,11 +124,12 @@ def get_llm(provider: LLMProvider | None = None):
     # Default: Ollama (Gemma 4)
     from llama_index.llms.ollama import Ollama
 
-    log.info("llm_provider_active", provider="ollama", model=settings.ollama_model)
+    log.info("llm_provider_active", provider="ollama", model=settings.ollama_model,
+             timeout=settings.ollama_request_timeout)
     return Ollama(
         model=settings.ollama_model,
         base_url=settings.ollama_base_url,
-        request_timeout=120.0,
+        request_timeout=settings.ollama_request_timeout,
         temperature=0.1,
     )
 
@@ -203,6 +205,11 @@ def get_parser(provider: ParserProvider | None = None):
         from src.ingestion.parsers.llamaparse import LlamaParseParser
         log.info("parser_active", provider="llamaparse", tier=settings.llamaparse_tier)
         return LlamaParseParser()
+
+    elif _provider == ParserProvider.PYTHONDOCX:
+        from src.ingestion.parsers.pythondocx import PythonDocxParser
+        log.info("parser_active", provider="python-docx")
+        return PythonDocxParser()
 
     raise ValueError(f"Unknown parser provider: {_provider}")
 

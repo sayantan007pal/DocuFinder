@@ -41,7 +41,16 @@ async def load_document(
 
     settings = get_settings()
 
-    if settings.enable_pdf_classification:
+    # Check for DOCX-specific override (works regardless of PDF classification setting)
+    is_docx = mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if is_docx and settings.parser_docx:
+        from src.core.providers import ParserProvider
+        parser = get_parser(ParserProvider(settings.parser_docx))
+        log.info("parser_docx_override",
+                 doc_id=doc_id,
+                 provider=settings.parser_docx,
+                 mime_type=mime_type)
+    elif settings.enable_pdf_classification:
         # Intelligent routing: classify PDF, pick optimal parser
         config = route_to_parser(file_path, mime_type)
         parser = get_parser(config.provider)
