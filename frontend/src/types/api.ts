@@ -101,6 +101,7 @@ export interface ChatMessage {
     took_ms?: number;
     cached?: boolean;
     provider?: string;
+    tokens?: number;
   };
   created_at: string;
 }

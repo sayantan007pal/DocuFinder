@@ -1,19 +1,17 @@
 /**
  * PDFViewer — Scrollable PDF viewer with zoom and page navigation
  * Uses react-pdf with PDF.js under the hood
+ * IMPORTANT: This component must be dynamically imported with ssr: false
  */
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Icon } from "@/components/ui/icon";
 import { KineticButton } from "@/components/ui/kinetic-button";
 import { fetchDocumentFile } from "@/lib/api-client";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Types for react-pdf components
+type ReactPdfModule = typeof import("react-pdf");
 
 interface PDFViewerProps {
   docId: string;
@@ -39,12 +37,28 @@ export function PDFViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pageInputValue, setPageInputValue] = useState<string>(String(initialPage));
+  const [pdfLib, setPdfLib] = useState<ReactPdfModule | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const initialScrollDone = useRef(false);
 
+  // Memoize file object to prevent unnecessary re-renders
+  const fileObject = useMemo(
+    () => (pdfData ? { data: pdfData } : null),
+    [pdfData]
+  );
+
+  // Load react-pdf library on client side only
+  useEffect(() => {
+    import("react-pdf").then((mod) => {
+      mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`;
+      setPdfLib(mod);
+    });
+  }, []);
+
   // Fetch PDF file
   useEffect(() => {
+    if (!pdfLib) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -67,7 +81,7 @@ export function PDFViewer({
     return () => {
       cancelled = true;
     };
-  }, [docId]);
+  }, [docId, pdfLib]);
 
   const onDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
@@ -150,11 +164,13 @@ export function PDFViewer({
     }
   }, [onTextSelect]);
 
-  if (loading) {
+  if (!pdfLib || loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-        <span className="text-sm text-slate-400">Loading {filename}...</span>
+        <span className="text-sm text-slate-400">
+          {!pdfLib ? "Loading PDF viewer..." : `Loading ${filename}...`}
+        </span>
       </div>
     );
   }
@@ -169,7 +185,7 @@ export function PDFViewer({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full min-h-0">
       {/* Toolbar */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b border-white/5"
@@ -238,16 +254,16 @@ export function PDFViewer({
       {/* PDF Pages Container */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto p-4"
+        className="flex-1 min-h-0 overflow-auto p-4"
         onScroll={handleScroll}
         onMouseUp={handleTextSelection}
         style={{
           background: "linear-gradient(180deg, #0b1323 0%, #131c2b 100%)",
         }}
       >
-        {pdfData && (
-          <Document
-            file={{ data: pdfData }}
+        {fileObject && pdfLib && (
+          <pdfLib.Document
+            file={fileObject}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
               <div className="flex items-center justify-center p-8">
@@ -275,7 +291,7 @@ export function PDFViewer({
                       overflow: "hidden",
                     }}
                   >
-                    <Page
+                    <pdfLib.Page
                       pageNumber={pageNum}
                       scale={scale}
                       renderTextLayer={true}
@@ -294,7 +310,7 @@ export function PDFViewer({
                 )
               )}
             </div>
-          </Document>
+          </pdfLib.Document>
         )}
       </div>
     </div>

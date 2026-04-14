@@ -145,7 +145,7 @@ export function DocumentViewerPanel({
 
   // Panel content
   const panelContent = (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3 border-b border-white/5"
@@ -204,7 +204,7 @@ export function DocumentViewerPanel({
       {/* Content Area */}
       <div className="flex flex-1 min-h-0">
         {/* Document Viewer */}
-        <div className={`flex-1 min-w-0 ${showChat ? "border-r border-white/5" : ""}`}>
+        <div className={`flex flex-col flex-1 min-w-0 min-h-0 ${showChat ? "border-r border-white/5" : ""}`}>
           {renderViewer()}
         </div>
 
@@ -227,9 +227,9 @@ export function DocumentViewerPanel({
   // Panel mode: render inline
   if (mode === "panel") {
     return (
-      <GlassmorphicCard variant="panel" className="h-full overflow-hidden">
+      <div className="h-full w-full flex flex-col overflow-hidden" style={{ background: "rgba(19, 28, 43, 0.8)", backdropFilter: "blur(12px)" }}>
         {panelContent}
-      </GlassmorphicCard>
+      </div>
     );
   }
 
@@ -240,7 +240,7 @@ export function DocumentViewerPanel({
       style={{ background: "rgba(0, 0, 0, 0.8)" }}
     >
       <div
-        className="w-[95vw] h-[95vh] rounded-2xl overflow-hidden"
+        className="w-[95vw] h-[95vh] rounded-2xl flex flex-col"
         style={{
           background: "rgba(11, 19, 35, 0.98)",
           backdropFilter: "blur(24px)",

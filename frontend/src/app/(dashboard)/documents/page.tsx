@@ -396,6 +396,7 @@ export default function DocumentMatrixPage() {
       {/* Document Viewer Panel */}
       {viewingDoc && (
         <div
+          className="flex flex-col"
           style={{
             position: "fixed",
             top: 64, // below TopAppBar
