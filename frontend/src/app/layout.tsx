@@ -1,15 +1,25 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import { ReactQueryProvider } from "@/components/providers/react-query";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Inter({ 
+  subsets: ["latin"], 
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({ 
+  subsets: ["latin"], 
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "DocuFinder — Company Document Intelligence",
+  title: "Command Center — Document Intelligence",
   description:
-    "Upload, search, and summarize company documents with AI-powered semantic search.",
+    "The Kinetic Observatory for company document intelligence, semantic search, and AI-powered analysis.",
 };
 
 export default function RootLayout({
@@ -18,7 +28,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+      <head>
+        <link 
+          rel="stylesheet" 
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" 
+        />
+      </head>
       <body>
         <SessionProvider>
           <ReactQueryProvider>{children}</ReactQueryProvider>

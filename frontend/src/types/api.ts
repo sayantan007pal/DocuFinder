@@ -80,3 +80,37 @@ export interface HealthStatus {
   version: string;
   environment: string;
 }
+
+// Chat Types
+export interface ChatSession {
+  id: string;
+  title: string;
+  doc_filter?: string;
+  message_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: SearchHit[];
+  metadata: {
+    took_ms?: number;
+    cached?: boolean;
+    provider?: string;
+  };
+  created_at: string;
+}
+
+export interface ChatSessionListResponse {
+  sessions: ChatSession[];
+  total: number;
+}
+
+export interface ChatMessagesResponse {
+  messages: ChatMessage[];
+  total: number;
+}

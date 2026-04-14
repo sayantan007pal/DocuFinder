@@ -17,11 +17,11 @@ export default async function DashboardLayout({
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "32px 40px",
-          background: "hsl(222, 84%, 5%)",
+          padding: "24px 32px",
+          background: "var(--base)",
         }}
       >
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>{children}</div>
+        <div style={{ maxWidth: 1400, margin: "0 auto" }}>{children}</div>
       </main>
     </div>
   );

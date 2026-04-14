@@ -1,92 +1,361 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";
+import { useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
-import type { Document, PaginatedResponse, UploadResponse } from "@/types/api";
+import { TopAppBar } from "@/components/layout/top-app-bar";
+import {
+  Icon,
+  Icons,
+  GlassmorphicCard,
+  KineticButton,
+  KineticInput,
+  StatusBadge,
+  ProgressBar,
+  SemanticDensityBar,
+} from "@/components/ui";
+import type { 
+  Document, 
+  PaginatedResponse, 
+  UploadResponse, 
+  SearchResponse,
+  ExtractedTable,
+  SummaryResponse,
+} from "@/types/api";
 
-export default function DocumentsPage() {
+export default function DocumentMatrixPage() {
+  const searchParams = useSearchParams();
+  const initialDocId = searchParams.get("doc_id");
+  
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(initialDocId);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [searchFilter, setSearchFilter] = useState("");
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  // Fetch documents
+  const { data: docsData, isLoading: docsLoading } = useQuery({
     queryKey: ["documents"],
-    queryFn: () => apiClient.get<PaginatedResponse<Document>>("documents"),
-    refetchInterval: 5000, // Poll for status updates
+    queryFn: () => apiClient.get<PaginatedResponse<Document>>("documents?page_size=50"),
+    refetchInterval: 5000,
   });
 
+  // Fetch document excerpts via search when document is selected
+  const { data: excerptData, isLoading: excerptLoading } = useQuery({
+    queryKey: ["document-excerpts", selectedDocId],
+    queryFn: () => selectedDocId 
+      ? apiClient.post<SearchResponse>("search", { 
+          query: "summary overview main content key points", 
+          top_k: 5,
+          doc_ids: [selectedDocId]
+        })
+      : null,
+    enabled: !!selectedDocId,
+  });
+
+  // Fetch tables for selected document
+  const { data: tablesData, isLoading: tablesLoading } = useQuery({
+    queryKey: ["tables", selectedDocId],
+    queryFn: () => selectedDocId 
+      ? apiClient.get<ExtractedTable[]>(`extract/tables/${selectedDocId}`)
+      : null,
+    enabled: !!selectedDocId,
+  });
+
+  // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: (file: File) =>
-      apiClient.upload<UploadResponse>("ingest/upload", file),
+    mutationFn: (file: File) => apiClient.upload<UploadResponse>("ingest/upload", file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
   });
 
+  // Classify mutation
+  const classifyMutation = useMutation({
+    mutationFn: (docId: string) => apiClient.post<{ pdf_type: string }>(`summarize/classify/${docId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+
+  const documents = docsData?.items || [];
+  const filteredDocs = searchFilter
+    ? documents.filter(d => d.filename.toLowerCase().includes(searchFilter.toLowerCase()))
+    : documents;
+
+  const selectedDoc = documents.find(d => d.id === selectedDocId);
+
+  // Set initial selection from URL
+  useEffect(() => {
+    if (initialDocId && !selectedDocId) {
+      setSelectedDocId(initialDocId);
+    }
+  }, [initialDocId, selectedDocId]);
+
   return (
-    <div className="animate-slide-in">
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 32,
+    <>
+      <TopAppBar 
+        actions={
+          <KineticButton 
+            variant="primary" 
+            icon={Icons.upload}
+            onClick={() => setUploadDialogOpen(true)}
+          >
+            Upload
+          </KineticButton>
+        }
+      />
+
+      <div 
+        style={{ 
+          display: "grid", 
+          gridTemplateColumns: selectedDocId ? "1fr 1fr" : "1fr", 
+          gap: 24,
+          minHeight: "calc(100vh - 180px)",
         }}
       >
-        <div>
-          <h1
-            style={{
-              fontSize: 28,
-              fontWeight: 700,
-              marginBottom: 4,
-              color: "hsl(210, 40%, 98%)",
+        {/* Left Panel: Document List / Viewer */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Document List Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <KineticInput
+              icon={Icons.search}
+              placeholder="Filter documents..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 13, color: "hsl(215, 20%, 55%)" }}>
+              {filteredDocs.length} documents
+            </span>
+          </div>
+
+          {/* Document List */}
+          <div 
+            style={{ 
+              display: "flex", 
+              flexDirection: "column", 
+              gap: 8,
+              flex: 1,
+              overflowY: "auto",
             }}
           >
-            Documents
-          </h1>
-          <p style={{ color: "hsl(215, 20%, 65%)", fontSize: 14 }}>
-            {data?.total || 0} documents ingested
-          </p>
+            {docsLoading ? (
+              Array.from({ length: 5 }).map((_, i) => <DocumentSkeleton key={i} />)
+            ) : filteredDocs.length === 0 ? (
+              <EmptyState onUpload={() => setUploadDialogOpen(true)} />
+            ) : (
+              filteredDocs.map((doc) => (
+                <DocumentListItem
+                  key={doc.id}
+                  doc={doc}
+                  selected={doc.id === selectedDocId}
+                  onSelect={() => setSelectedDocId(doc.id === selectedDocId ? null : doc.id)}
+                />
+              ))
+            )}
+          </div>
         </div>
-        <button
-          onClick={() => setUploadDialogOpen(true)}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 8,
-            border: "none",
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            background:
-              "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
-            color: "white",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          ＋ Upload
-        </button>
-      </div>
 
-      {/* Document list */}
-      {isLoading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[...Array(4)].map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      ) : data?.items?.length === 0 ? (
-        <EmptyState onUpload={() => setUploadDialogOpen(true)} />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {data?.items?.map((doc) => (
-            <DocumentCard key={doc.id} doc={doc} />
-          ))}
-        </div>
-      )}
+        {/* Right Panel: Intelligence Matrix */}
+        {selectedDocId && selectedDoc && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Document Header */}
+            <GlassmorphicCard variant="elevated" style={{ padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                <div
+                  className="gradient-glow"
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 12,
+                    background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon 
+                    name={selectedDoc.filename.endsWith(".pdf") ? Icons.pdf : Icons.doc} 
+                    size={28} 
+                    style={{ color: "#fff" }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h2 
+                    className="font-display"
+                    style={{ 
+                      fontSize: "1.25rem", 
+                      fontWeight: 600,
+                      color: "hsl(210, 40%, 98%)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {selectedDoc.filename}
+                  </h2>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <MetaChip icon="calendar_today" value={formatDate(selectedDoc.created_at)} />
+                    <MetaChip icon="description" value={`${selectedDoc.page_count} pages`} />
+                    <MetaChip icon="storage" value={formatBytes(selectedDoc.file_size)} />
+                    {selectedDoc.parser_used && (
+                      <MetaChip icon="settings" value={selectedDoc.parser_used} />
+                    )}
+                  </div>
+                </div>
+                <StatusBadge status={selectedDoc.status as any} />
+              </div>
+
+              {/* Classification */}
+              {selectedDoc.status === "completed" && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--surface-container-high)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <span className="uppercase-label">Document Type</span>
+                      <p style={{ fontSize: 15, fontWeight: 500, color: "hsl(210, 40%, 98%)", marginTop: 4 }}>
+                        {selectedDoc.pdf_type || "Unclassified"}
+                      </p>
+                    </div>
+                    {!selectedDoc.pdf_type && (
+                      <KineticButton
+                        variant="ghost"
+                        size="sm"
+                        icon={Icons.analyze}
+                        loading={classifyMutation.isPending}
+                        onClick={() => classifyMutation.mutate(selectedDoc.id)}
+                      >
+                        Classify
+                      </KineticButton>
+                    )}
+                  </div>
+                </div>
+              )}
+            </GlassmorphicCard>
+
+            {/* Content Excerpts */}
+            {selectedDoc.status === "completed" && (
+              <GlassmorphicCard style={{ padding: 24, flex: 1, overflowY: "auto" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span className="uppercase-label">Content Excerpts</span>
+                  {excerptLoading && <Icon name={Icons.processing} size={16} className="animate-spin" />}
+                </div>
+
+                {excerptData?.results && excerptData.results.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {excerptData.results.map((hit, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: 16,
+                          background: "var(--surface-container-low)",
+                          borderRadius: 10,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          {hit.page_number && (
+                            <span 
+                              style={{ 
+                                fontSize: 11, 
+                                padding: "2px 8px",
+                                background: "var(--surface-container-high)",
+                                borderRadius: 4,
+                                color: "hsl(215, 20%, 65%)",
+                              }}
+                            >
+                              Page {hit.page_number}
+                            </span>
+                          )}
+                          <SemanticDensityBar density={hit.score} label="Relevance" />
+                        </div>
+                        <p style={{ fontSize: 13, color: "hsl(215, 20%, 75%)", lineHeight: 1.6 }}>
+                          {hit.chunk_text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : !excerptLoading ? (
+                  <p style={{ fontSize: 13, color: "hsl(215, 20%, 55%)", textAlign: "center", padding: 20 }}>
+                    No content excerpts available
+                  </p>
+                ) : null}
+              </GlassmorphicCard>
+            )}
+
+            {/* Tables Panel */}
+            {selectedDoc.status === "completed" && (
+              <GlassmorphicCard style={{ padding: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span className="uppercase-label">Extracted Tables</span>
+                  <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>
+                    {tablesData?.length || 0} tables
+                  </span>
+                </div>
+
+                {tablesLoading ? (
+                  <div style={{ display: "flex", justifyContent: "center", padding: 20 }}>
+                    <Icon name={Icons.processing} size={20} className="animate-spin" />
+                  </div>
+                ) : tablesData && tablesData.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {tablesData.slice(0, 3).map((table, i) => (
+                      <div
+                        key={table.id || i}
+                        style={{
+                          padding: 12,
+                          background: "var(--surface-container-low)",
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Icon name={Icons.table} size={18} style={{ color: "hsl(262, 80%, 70%)" }} />
+                          <span style={{ fontSize: 13, color: "hsl(210, 40%, 98%)" }}>
+                            Table {i + 1} • Page {table.page_number}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>
+                          {table.row_count} × {table.column_count}
+                        </span>
+                      </div>
+                    ))}
+                    {tablesData.length > 3 && (
+                      <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)", textAlign: "center" }}>
+                        +{tablesData.length - 3} more tables
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: "hsl(215, 20%, 55%)", textAlign: "center" }}>
+                    No tables detected
+                  </p>
+                )}
+              </GlassmorphicCard>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 12 }}>
+              <KineticButton 
+                variant="secondary" 
+                icon={Icons.search}
+                fullWidth
+                onClick={() => window.location.href = `/search?doc_id=${selectedDoc.id}`}
+              >
+                Search in Document
+              </KineticButton>
+              <KineticButton 
+                variant="secondary" 
+                icon={Icons.graph}
+                fullWidth
+                onClick={() => window.location.href = `/graph?doc_id=${selectedDoc.id}`}
+              >
+                Analyze Reasoning
+              </KineticButton>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Upload Dialog */}
       {uploadDialogOpen && (
@@ -96,186 +365,129 @@ export default function DocumentsPage() {
           uploading={uploadMutation.isPending}
         />
       )}
-    </div>
+    </>
   );
 }
 
-function DocumentCard({ doc }: { doc: Document }) {
+// Document List Item
+function DocumentListItem({ 
+  doc, 
+  selected, 
+  onSelect 
+}: { 
+  doc: Document; 
+  selected: boolean; 
+  onSelect: () => void;
+}) {
   return (
-    <div
-      className="glass"
+    <GlassmorphicCard
+      variant={selected ? "elevated" : "default"}
+      hoverable
+      onClick={onSelect}
       style={{
-        padding: "18px 24px",
-        borderRadius: 12,
+        padding: 16,
         display: "flex",
         alignItems: "center",
-        gap: 16,
-        transition: "all 0.2s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background =
-          "rgba(255,255,255,0.07)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background =
-          "rgba(255,255,255,0.04)";
+        gap: 14,
+        cursor: "pointer",
+        ...(selected && {
+          background: "linear-gradient(135deg, hsl(262 80% 65% / 0.15), hsl(200 90% 65% / 0.08))",
+        }),
       }}
     >
-      <div style={{ fontSize: 28 }}>
-        {doc.filename.endsWith(".pdf") ? "📕" : "📘"}
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          background: selected 
+            ? "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))"
+            : "var(--surface-container-high)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon 
+          name={doc.filename.endsWith(".pdf") ? Icons.pdf : Icons.doc} 
+          size={20}
+          style={{ color: selected ? "#fff" : "hsl(215, 20%, 65%)" }}
+        />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p
-          style={{
-            fontWeight: 600,
-            fontSize: 15,
-            color: "hsl(210, 40%, 98%)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <p style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: "hsl(210, 40%, 98%)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}>
           {doc.filename}
         </p>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            marginTop: 4,
-            fontSize: 12,
-            color: "hsl(215, 20%, 65%)",
-          }}
-        >
-          <span>{(doc.file_size / 1024).toFixed(0)} KB</span>
-          <span>•</span>
-          <span>{doc.page_count} pages</span>
-          {doc.parser_used && (
-            <>
-              <span>•</span>
-              <span>{doc.parser_used}</span>
-            </>
-          )}
-        </div>
+        <p style={{ fontSize: 12, color: "hsl(215, 20%, 55%)", marginTop: 2 }}>
+          {doc.page_count} pages • {formatBytes(doc.file_size)}
+        </p>
       </div>
-      <StatusBadge status={doc.status} />
-    </div>
+      <StatusBadge status={doc.status as any} size="sm" showIcon={false} />
+    </GlassmorphicCard>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    queued: { label: "Queued", className: "status-queued" },
-    processing: { label: "Processing…", className: "status-processing" },
-    completed: { label: "Ready", className: "status-completed" },
-    failed: { label: "Failed", className: "status-failed" },
-  };
-  const { label, className } = config[status] || {
-    label: status,
-    className: "",
-  };
-
+// Meta Chip
+function MetaChip({ icon, value }: { icon: string; value: string }) {
   return (
     <span
-      className={className}
       style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
         padding: "4px 10px",
-        borderRadius: 20,
+        background: "var(--surface-container)",
+        borderRadius: 6,
         fontSize: 12,
-        fontWeight: 600,
+        color: "hsl(215, 20%, 65%)",
       }}
     >
-      {label}
+      <Icon name={icon} size={14} />
+      {value}
     </span>
   );
 }
 
+// Skeleton
+function DocumentSkeleton() {
+  return (
+    <GlassmorphicCard style={{ padding: 16, display: "flex", gap: 14, alignItems: "center" }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--surface-container-high)" }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ width: "70%", height: 14, borderRadius: 4, background: "var(--surface-container-high)", marginBottom: 8 }} />
+        <div style={{ width: "40%", height: 12, borderRadius: 4, background: "var(--surface-container)" }} />
+      </div>
+    </GlassmorphicCard>
+  );
+}
+
+// Empty State
 function EmptyState({ onUpload }: { onUpload: () => void }) {
   return (
-    <div
-      className="glass"
-      style={{
-        padding: 60,
-        borderRadius: 16,
-        textAlign: "center",
-        borderStyle: "dashed",
-      }}
-    >
-      <div style={{ fontSize: 48, marginBottom: 16 }}>📂</div>
-      <h3
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          color: "hsl(210, 40%, 90%)",
-          marginBottom: 8,
-        }}
-      >
+    <GlassmorphicCard style={{ padding: 48, textAlign: "center" }}>
+      <Icon name="folder_open" size={48} style={{ color: "hsl(215, 20%, 45%)", marginBottom: 16 }} />
+      <h3 className="font-display" style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: 8 }}>
         No documents yet
       </h3>
       <p style={{ color: "hsl(215, 20%, 65%)", marginBottom: 24, fontSize: 14 }}>
         Upload your first PDF or DOCX to get started
       </p>
-      <button
-        onClick={onUpload}
-        style={{
-          padding: "10px 24px",
-          borderRadius: 8,
-          border: "1px solid hsl(262 80% 65% / 0.4)",
-          cursor: "pointer",
-          fontSize: 14,
-          fontWeight: 500,
-          background: "hsl(262 80% 65% / 0.1)",
-          color: "hsl(262,80%,75%)",
-        }}
-      >
+      <KineticButton variant="primary" icon={Icons.upload} onClick={onUpload}>
         Upload Document
-      </button>
-    </div>
+      </KineticButton>
+    </GlassmorphicCard>
   );
 }
 
-function SkeletonCard() {
-  return (
-    <div
-      className="glass"
-      style={{
-        padding: "18px 24px",
-        borderRadius: 12,
-        display: "flex",
-        gap: 16,
-        alignItems: "center",
-      }}
-    >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 6,
-          background: "hsl(217, 33%, 20%)",
-        }}
-      />
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
-            height: 14,
-            width: "60%",
-            borderRadius: 4,
-            background: "hsl(217, 33%, 20%)",
-            marginBottom: 8,
-          }}
-        />
-        <div
-          style={{
-            height: 11,
-            width: "30%",
-            borderRadius: 4,
-            background: "hsl(217, 33%, 17%)",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
+// Upload Dialog
 function UploadDialog({
   onClose,
   onUpload,
@@ -296,7 +508,10 @@ function UploadDialog({
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] },
+    accept: { 
+      "application/pdf": [".pdf"], 
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] 
+    },
     maxSize: 50 * 1024 * 1024,
     multiple: true,
   });
@@ -307,76 +522,91 @@ function UploadDialog({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(0,0,0,0.8)",
+        backdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 100,
       }}
     >
-      <div
+      <GlassmorphicCard
+        variant="elevated"
         onClick={(e) => e.stopPropagation()}
-        className="glass animate-slide-in"
-        style={{ width: 480, borderRadius: 16, padding: 32 }}
+        className="animate-scale-in"
+        style={{ width: 500, padding: 32 }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 24,
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Upload Documents</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h2 className="font-display" style={{ fontSize: "1.25rem", fontWeight: 600 }}>
+            Upload Documents
+          </h2>
           <button
             onClick={onClose}
             style={{
-              background: "none",
+              background: "var(--surface-container)",
               border: "none",
+              borderRadius: 8,
+              width: 32,
+              height: 32,
               cursor: "pointer",
-              fontSize: 20,
-              color: "hsl(215, 20%, 65%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            ✕
+            <Icon name={Icons.close} size={18} style={{ color: "hsl(215, 20%, 65%)" }} />
           </button>
         </div>
 
         <div
           {...getRootProps()}
           style={{
-            border: `2px dashed ${isDragActive ? "hsl(262,80%,65%)" : "hsl(217, 33%, 25%)"}`,
+            padding: "48px 24px",
             borderRadius: 12,
-            padding: "40px 24px",
             textAlign: "center",
             cursor: uploading ? "not-allowed" : "pointer",
-            background: isDragActive ? "hsl(262 80% 65% / 0.05)" : "transparent",
+            background: isDragActive ? "hsl(262 80% 65% / 0.1)" : "var(--surface-container-low)",
             transition: "all 0.2s",
           }}
+          className={isDragActive ? "gradient-border" : ""}
         >
           <input {...getInputProps()} disabled={uploading} />
-          <div style={{ fontSize: 40, marginBottom: 12 }}>
-            {isDragActive ? "📥" : "📤"}
-          </div>
-          <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 6 }}>
-            {isDragActive ? "Drop files here" : "Drag & drop files or click to browse"}
+          <Icon 
+            name={isDragActive ? "download" : "cloud_upload"} 
+            size={48} 
+            style={{ color: isDragActive ? "hsl(262, 80%, 70%)" : "hsl(215, 20%, 55%)", marginBottom: 16 }}
+          />
+          <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 6, color: "hsl(210, 40%, 98%)" }}>
+            {isDragActive ? "Drop files here" : "Drag & drop or click to browse"}
           </p>
-          <p style={{ color: "hsl(215, 20%, 65%)", fontSize: 13 }}>
-            PDF and DOCX — up to 50MB each
+          <p style={{ color: "hsl(215, 20%, 55%)", fontSize: 13 }}>
+            PDF and DOCX • up to 50MB each
           </p>
           {uploading && (
-            <p
-              style={{
-                marginTop: 12,
-                fontSize: 13,
-                color: "hsl(262, 80%, 75%)",
-              }}
-            >
-              Uploading…
-            </p>
+            <div style={{ marginTop: 16 }}>
+              <ProgressBar value={65} variant="gradient" size="md" />
+              <p style={{ marginTop: 8, fontSize: 13, color: "hsl(262, 80%, 75%)" }}>
+                Uploading...
+              </p>
+            </div>
           )}
         </div>
-      </div>
+      </GlassmorphicCard>
     </div>
   );
+}
+
+// Helpers
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }

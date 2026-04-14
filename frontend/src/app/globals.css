@@ -1,82 +1,211 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* ========================================
+   COMMAND CENTER DESIGN SYSTEM
+   The Kinetic Observatory
+   ======================================== */
+
 :root {
+  /* Base Layer - Deep Space */
+  --base: #0b1323;
   --background: 222 84% 5%;
   --foreground: 210 40% 98%;
+  
+  /* Surface Hierarchy (no 1px borders - tonal shifting only) */
+  --surface-base: #0b1323;
+  --surface-container-low: #131c2b;
+  --surface-container: #1a2435;
+  --surface-container-high: #232d3f;
+  --surface-container-highest: #2d3546;
+  
+  /* Kinetic Gradient (Purple → Cyan) */
+  --kinetic-start: 262 80% 70%;
+  --kinetic-end: 200 90% 65%;
+  --kinetic-gradient: linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%);
+  
+  /* Semantic Colors */
+  --primary: 262 80% 65%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 200 90% 65%;
+  --secondary-foreground: 0 0% 100%;
+  --accent: 262 80% 65%;
+  --accent-foreground: 0 0% 100%;
+  
+  /* Status Colors */
+  --success: 142 76% 50%;
+  --success-muted: 142 76% 50% / 0.15;
+  --warning: 38 92% 50%;
+  --warning-muted: 38 92% 50% / 0.15;
+  --error: 0 84% 60%;
+  --error-muted: 0 84% 60% / 0.15;
+  --info: 200 90% 65%;
+  --info-muted: 200 90% 65% / 0.15;
+  
+  /* Text Hierarchy */
+  --text-primary: 210 40% 98%;
+  --text-secondary: 215 20% 65%;
+  --text-muted: 215 15% 45%;
+  
+  /* Legacy Compatibility */
   --card: 222 47% 8%;
   --card-foreground: 210 40% 98%;
   --popover: 222 47% 8%;
   --popover-foreground: 210 40% 98%;
-  --primary: 262 80% 65%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 98%;
   --muted: 217 33% 17%;
   --muted-foreground: 215 20% 65%;
-  --accent: 262 80% 65%;
-  --accent-foreground: 0 0% 100%;
   --destructive: 0 62% 55%;
   --destructive-foreground: 0 0% 100%;
   --border: 217 33% 17%;
   --input: 217 33% 17%;
   --ring: 262 80% 65%;
   --radius: 0.5rem;
-  --success: 142 76% 36%;
-  --warning: 38 92% 50%;
 }
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
 
 * {
   box-sizing: border-box;
-  border-color: hsl(var(--border));
+  border-color: transparent; /* No default borders per design system */
 }
 
 body {
-  background: hsl(var(--background));
+  background: var(--base);
   color: hsl(var(--foreground));
-  font-family: 'Inter', var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar */
+/* Display Typography - Space Grotesk */
+.font-display {
+  font-family: var(--font-space-grotesk), 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+h1, h2, h3, .text-headline {
+  font-family: var(--font-space-grotesk), 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* ========================================
+   SCROLLBAR
+   ======================================== */
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
+  background: var(--surface-container-highest);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
 
-/* Glassmorphism utility */
+/* ========================================
+   GLASSMORPHISM
+   ======================================== */
+
 .glass {
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Gradient text */
+.glass-elevated {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.glass-panel {
+  background: rgba(19, 28, 43, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ========================================
+   KINETIC GRADIENT UTILITIES
+   ======================================== */
+
 .gradient-text {
-  background: linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%);
+  background: var(--kinetic-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Focus ring */
-:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
+.gradient-border {
+  position: relative;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  background: var(--kinetic-gradient);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
-/* Status badges */
-.status-queued    { color: hsl(38, 92%, 50%); background: hsl(38 92% 50% / 0.1); }
-.status-processing { color: hsl(200, 90%, 65%); background: hsl(200 90% 65% / 0.1); animation: pulse 2s infinite; }
-.status-completed  { color: hsl(142, 76%, 50%); background: hsl(142 76% 50% / 0.1); }
-.status-failed     { color: hsl(0, 62%, 55%); background: hsl(0 62% 55% / 0.1); }
+.gradient-glow {
+  box-shadow: 
+    0 0 20px hsl(262 80% 70% / 0.3),
+    0 0 40px hsl(200 90% 65% / 0.2);
+}
 
-/* Animations */
+.kinetic-bg {
+  background: var(--kinetic-gradient);
+}
+
+/* ========================================
+   SURFACE HIERARCHY
+   ======================================== */
+
+.surface-base { background: var(--surface-base); }
+.surface-low { background: var(--surface-container-low); }
+.surface-container { background: var(--surface-container); }
+.surface-high { background: var(--surface-container-high); }
+.surface-highest { background: var(--surface-container-highest); }
+
+/* ========================================
+   FOCUS STATES
+   ======================================== */
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--base), 0 0 0 4px hsl(var(--ring));
+}
+
+/* ========================================
+   STATUS INDICATORS
+   ======================================== */
+
+.status-queued {
+  color: hsl(var(--warning));
+  background: hsl(var(--warning-muted));
+}
+.status-processing {
+  color: hsl(var(--info));
+  background: hsl(var(--info-muted));
+  animation: pulse 2s infinite;
+}
+.status-completed {
+  color: hsl(var(--success));
+  background: hsl(var(--success-muted));
+}
+.status-failed {
+  color: hsl(var(--error));
+  background: hsl(var(--error-muted));
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -92,4 +221,65 @@ body {
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px hsl(262 80% 70% / 0.3), 0 0 40px hsl(200 90% 65% / 0.2);
+  }
+  50% { 
+    box-shadow: 0 0 30px hsl(262 80% 70% / 0.5), 0 0 60px hsl(200 90% 65% / 0.3);
+  }
+}
+
 .animate-slide-in { animation: slide-in 0.25s ease-out; }
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+.animate-scale-in { animation: scale-in 0.2s ease-out; }
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+
+/* ========================================
+   CANVAS GRID (for Reasoning Graph)
+   ======================================== */
+
+.canvas-grid {
+  background-image: 
+    radial-gradient(circle at 1px 1px, var(--surface-container-high) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+.tracking-widest { letter-spacing: 0.1em; }
+.uppercase-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  color: hsl(var(--text-secondary));
+}
+
+/* Tinted shadows (not black) */
+.shadow-tinted {
+  box-shadow: 0 4px 24px hsl(var(--text-primary) / 0.06);
+}
+
+/* ========================================
+   MATERIAL SYMBOLS (Icon Font)
+   ======================================== */
+
+.material-symbols-rounded {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}

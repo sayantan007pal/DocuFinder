@@ -18,7 +18,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.api.middleware import RequestIDMiddleware, TenantContextMiddleware, limiter
-from src.api.routes import auth, documents, extract, health, ingest, search, summarize
+from src.api.routes import auth, chat, documents, extract, health, ingest, search, summarize
 from src.core.config import get_settings
 from src.core.tracing import setup_tracing
 from src.core.providers import log_active_providers
@@ -136,6 +136,7 @@ app.include_router(documents.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX)
 app.include_router(summarize.router, prefix=API_PREFIX)
 app.include_router(extract.router, prefix=API_PREFIX)
+app.include_router(chat.router, prefix=API_PREFIX)
 
 # ─── Global Error Handler ─────────────────────────────────────
 
