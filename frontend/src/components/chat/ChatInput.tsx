@@ -1,12 +1,13 @@
 /**
  * ChatInput — Message input with voice button placeholder and keyboard hints
- * Kinetic Observatory design with gradient focus states
+ * Kinetic Observatory design aligned with Command Center dashboard
  */
 "use client";
 
-import { useState, useRef, useCallback, KeyboardEvent, useEffect } from "react";
+import { useState, useRef, useCallback, KeyboardEvent, useEffect, CSSProperties } from "react";
 import { Icon } from "@/components/ui/icon";
 import { KineticButton } from "@/components/ui/kinetic-button";
+import { GlassmorphicCard } from "@/components/ui/glassmorphic-card";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -81,30 +82,129 @@ export function ChatInput({
     ? ["Explain this in detail", "Summarize this section", "What does this mean?"]
     : ["Summarize this document", "What are the key points?", "Find mentions of..."]);
 
+  // Styles
+  const containerStyles: CSSProperties = {
+    padding: 20,
+    background: "var(--surface-container-low)",
+    borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+  };
+
+  const selectedTextCardStyles: CSSProperties = {
+    padding: "12px 14px",
+    borderRadius: 12,
+    background: "hsl(200 90% 65% / 0.08)",
+    marginBottom: 16,
+  };
+
+  const suggestionChipStyles: CSSProperties = {
+    padding: "8px 14px",
+    fontSize: 12,
+    fontWeight: 500,
+    borderRadius: 999,
+    background: "rgba(255, 255, 255, 0.04)",
+    color: "hsl(215, 20%, 65%)",
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  };
+
+  const inputContainerStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    background: focused ? "rgba(255, 255, 255, 0.06)" : "rgba(255, 255, 255, 0.03)",
+    position: "relative",
+    transition: "all 0.2s ease",
+  };
+
+  const bottomAccentStyles: CSSProperties = {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    borderRadius: "0 0 12px 12px",
+    background: focused
+      ? "linear-gradient(90deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)"
+      : "transparent",
+    transition: "background 0.2s ease",
+  };
+
+  const textareaStyles: CSSProperties = {
+    flex: 1,
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    color: "hsl(210, 40%, 98%)",
+    fontSize: 14,
+    lineHeight: 1.6,
+    resize: "none",
+    minHeight: 24,
+    maxHeight: 150,
+    fontFamily: "inherit",
+  };
+
+  const voiceButtonStyles: CSSProperties = {
+    padding: 10,
+    borderRadius: 8,
+    background: "transparent",
+    color: "hsl(215, 20%, 55%)",
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+  const kbdStyles: CSSProperties = {
+    padding: "4px 8px",
+    borderRadius: 6,
+    background: "rgba(255, 255, 255, 0.06)",
+    fontSize: 11,
+    fontFamily: "inherit",
+    fontWeight: 500,
+    color: "hsl(215, 20%, 55%)",
+  };
+
   return (
-    <div className="p-4" style={{ background: "rgba(19, 28, 43, 0.9)" }}>
+    <div style={containerStyles}>
       {/* Selected Text Context */}
       {selectedText && (
-        <div
-          className="mb-3 p-3 rounded-xl"
-          style={{ background: "hsl(200 90% 65% / 0.1)" }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs" style={{ color: "hsl(200, 90%, 65%)" }}>
-              <Icon name="format_quote" size={14} />
-              <span>Ask about selected text:</span>
+        <div style={selectedTextCardStyles}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+            <div className="flex items-center gap-2">
+              <Icon name="format_quote" size={14} style={{ color: "hsl(200, 90%, 65%)" }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: "hsl(200, 90%, 65%)" }}>
+                Ask about selected text
+              </span>
             </div>
             <button
               onClick={onClearSelection}
-              className="p-1 rounded-lg transition-colors"
-              style={{ background: "transparent" }}
+              style={{
+                padding: 4,
+                borderRadius: 6,
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
               onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
               <Icon name="close" size={14} style={{ color: "hsl(215, 20%, 55%)" }} />
             </button>
           </div>
-          <p className="text-sm line-clamp-2" style={{ color: "hsl(215, 20%, 75%)" }}>
+          <p 
+            className="line-clamp-2" 
+            style={{ 
+              fontSize: 13, 
+              color: "hsl(215, 20%, 75%)",
+              lineHeight: 1.5,
+            }}
+          >
             {selectedText}
           </p>
         </div>
@@ -112,16 +212,15 @@ export function ChatInput({
 
       {/* Quick Suggestions */}
       {message.length === 0 && (
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="flex flex-wrap gap-2" style={{ marginBottom: 16 }}>
           {suggestions.map((suggestion) => (
             <button
               key={suggestion}
               onClick={() => setMessage(suggestion)}
-              className="px-3 py-1.5 text-xs rounded-full transition-all duration-200"
-              style={{ background: "rgba(255, 255, 255, 0.04)", color: "hsl(215, 20%, 65%)" }}
+              style={suggestionChipStyles}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
-                e.currentTarget.style.color = "hsl(215, 20%, 85%)";
+                e.currentTarget.style.color = "hsl(210, 40%, 90%)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
@@ -135,15 +234,7 @@ export function ChatInput({
       )}
 
       {/* Input Area */}
-      <div
-        className="flex items-end gap-3 p-3 rounded-xl transition-all duration-200"
-        style={{
-          background: focused ? "rgba(255, 255, 255, 0.06)" : "rgba(255, 255, 255, 0.03)",
-          boxShadow: focused
-            ? "inset 0 0 0 1px hsl(262 80% 65% / 0.3), 0 0 20px hsl(262 80% 65% / 0.05)"
-            : "inset 0 0 0 1px rgba(255, 255, 255, 0.05)",
-        }}
-      >
+      <div style={inputContainerStyles}>
         <textarea
           ref={textareaRef}
           value={message}
@@ -154,18 +245,16 @@ export function ChatInput({
           placeholder={placeholder}
           disabled={disabled || isLoading}
           rows={1}
-          className="flex-1 bg-transparent outline-none text-sm resize-none min-h-[24px] max-h-[150px]"
-          style={{ color: "hsl(210, 40%, 98%)", lineHeight: "1.6" }}
+          style={textareaStyles}
         />
 
         {/* Voice Button (Placeholder) */}
         <button
           onClick={handleVoiceClick}
           disabled={isLoading}
-          className="p-2 rounded-lg transition-all duration-200 shrink-0"
-          style={{ background: "transparent", color: "hsl(215, 20%, 55%)" }}
+          style={voiceButtonStyles}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+            e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
             e.currentTarget.style.color = "hsl(262, 80%, 70%)";
           }}
           onMouseLeave={(e) => {
@@ -180,7 +269,7 @@ export function ChatInput({
         {/* Send Button */}
         <KineticButton
           variant="primary"
-          size="sm"
+          size="md"
           icon={isLoading ? "hourglass_empty" : "send"}
           onClick={handleSubmit}
           disabled={!message.trim() || isLoading || disabled}
@@ -188,28 +277,25 @@ export function ChatInput({
         >
           Send
         </KineticButton>
+
+        {/* Bottom accent bar */}
+        <div style={bottomAccentStyles} />
       </div>
 
       {/* Keyboard Hint */}
       <div
-        className="flex items-center justify-end gap-4 mt-2 text-xs"
-        style={{ color: "hsl(215, 20%, 45%)" }}
+        className="flex items-center justify-end gap-4"
+        style={{ marginTop: 12 }}
       >
-        <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 rounded" style={{ background: "rgba(255, 255, 255, 0.05)" }}>
-            Enter
-          </kbd>
-          <span>to send</span>
+        <span className="flex items-center gap-1.5">
+          <kbd style={kbdStyles}>Enter</kbd>
+          <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>send</span>
         </span>
-        <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 rounded" style={{ background: "rgba(255, 255, 255, 0.05)" }}>
-            Shift
-          </kbd>
-          <span>+</span>
-          <kbd className="px-1.5 py-0.5 rounded" style={{ background: "rgba(255, 255, 255, 0.05)" }}>
-            Enter
-          </kbd>
-          <span>for newline</span>
+        <span className="flex items-center gap-1.5">
+          <kbd style={kbdStyles}>Shift</kbd>
+          <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>+</span>
+          <kbd style={kbdStyles}>Enter</kbd>
+          <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>newline</span>
         </span>
       </div>
     </div>

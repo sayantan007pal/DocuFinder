@@ -1,11 +1,11 @@
 /**
  * PDFViewer — Scrollable PDF viewer with zoom and page navigation
- * Uses react-pdf with PDF.js under the hood
+ * Command Center design with polished toolbar
  * IMPORTANT: This component must be dynamically imported with ssr: false
  */
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, CSSProperties } from "react";
 import { Icon } from "@/components/ui/icon";
 import { KineticButton } from "@/components/ui/kinetic-button";
 import { fetchDocumentFile } from "@/lib/api-client";
@@ -164,11 +164,90 @@ export function PDFViewer({
     }
   }, [onTextSelect]);
 
+  // Styles
+  const loadingContainerStyles: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    gap: 16,
+  };
+
+  const spinnerStyles: CSSProperties = {
+    width: 32,
+    height: 32,
+    borderRadius: "50%",
+    border: "2px solid rgba(162, 136, 247, 0.3)",
+    borderTopColor: "hsl(262, 80%, 70%)",
+    animation: "spin 0.8s linear infinite",
+  };
+
+  const errorContainerStyles: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    gap: 16,
+  };
+
+  const toolbarStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 16px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+    background: "var(--surface-container-low)",
+  };
+
+  const zoomLabelStyles: CSSProperties = {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "hsl(262, 80%, 70%)",
+    minWidth: 52,
+    textAlign: "center",
+    fontFamily: "'JetBrains Mono', monospace",
+  };
+
+  const pageInputStyles: CSSProperties = {
+    width: 48,
+    padding: "6px 8px",
+    fontSize: 13,
+    fontWeight: 500,
+    textAlign: "center",
+    borderRadius: 8,
+    border: "none",
+    outline: "none",
+    background: "rgba(255, 255, 255, 0.06)",
+    color: "hsl(210, 40%, 98%)",
+    fontFamily: "'JetBrains Mono', monospace",
+  };
+
+  const pageLabelStyles: CSSProperties = {
+    fontSize: 13,
+    color: "hsl(215, 20%, 55%)",
+  };
+
+  const contentContainerStyles: CSSProperties = {
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+    padding: 20,
+    background: "var(--surface-base)",
+  };
+
+  const pageContainerStyles: CSSProperties = {
+    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03)",
+    borderRadius: 6,
+    overflow: "hidden",
+  };
+
   if (!pdfLib || loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-        <span className="text-sm text-slate-400">
+      <div style={loadingContainerStyles}>
+        <div style={spinnerStyles} />
+        <span style={{ fontSize: 13, color: "hsl(215, 20%, 55%)" }}>
           {!pdfLib ? "Loading PDF viewer..." : `Loading ${filename}...`}
         </span>
       </div>
@@ -177,67 +256,66 @@ export function PDFViewer({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Icon name="error" size={48} className="text-red-400" />
-        <span className="text-sm text-red-400">{error}</span>
+      <div style={errorContainerStyles}>
+        <div style={{
+          width: 64,
+          height: 64,
+          borderRadius: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "hsl(0 70% 50% / 0.1)",
+        }}>
+          <Icon name="error" size={32} style={{ color: "hsl(0, 70%, 60%)" }} />
+        </div>
+        <span style={{ fontSize: 14, color: "hsl(0, 70%, 60%)" }}>{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full w-full min-h-0">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", minHeight: 0 }}>
       {/* Toolbar */}
-      <div
-        className="flex items-center justify-between px-4 py-2 border-b border-white/5"
-        style={{ background: "rgba(19, 28, 43, 0.9)" }}
-      >
-        <div className="flex items-center gap-2">
+      <div style={toolbarStyles}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <KineticButton
             variant="ghost"
             size="sm"
             icon="remove"
             onClick={zoomOut}
             disabled={scale <= 0.5}
-          >
-            Zoom Out
-          </KineticButton>
-          <span className="text-sm text-slate-400 min-w-[60px] text-center">
-            {Math.round(scale * 100)}%
-          </span>
+          />
+          <span style={zoomLabelStyles}>{Math.round(scale * 100)}%</span>
           <KineticButton
             variant="ghost"
             size="sm"
             icon="add"
             onClick={zoomIn}
             disabled={scale >= 3.0}
-          >
-            Zoom In
-          </KineticButton>
+          />
           <KineticButton variant="ghost" size="sm" onClick={zoomReset}>
             Reset
           </KineticButton>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <KineticButton
             variant="ghost"
             size="sm"
             icon="keyboard_arrow_up"
             onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
             disabled={currentPage <= 1}
-          >
-            Prev
-          </KineticButton>
-          <div className="flex items-center gap-1">
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
               type="text"
               value={pageInputValue}
               onChange={(e) => setPageInputValue(e.target.value)}
               onBlur={handlePageInputSubmit}
               onKeyDown={(e) => e.key === "Enter" && handlePageInputSubmit()}
-              className="w-12 px-2 py-1 text-sm text-center rounded bg-white/5 text-slate-300 outline-none focus:ring-1 focus:ring-primary/50"
+              style={pageInputStyles}
             />
-            <span className="text-sm text-slate-400">of {numPages}</span>
+            <span style={pageLabelStyles}>of {numPages}</span>
           </div>
           <KineticButton
             variant="ghost"
@@ -245,38 +323,33 @@ export function PDFViewer({
             icon="keyboard_arrow_down"
             onClick={() => scrollToPage(Math.min(numPages, currentPage + 1))}
             disabled={currentPage >= numPages}
-          >
-            Next
-          </KineticButton>
+          />
         </div>
       </div>
 
       {/* PDF Pages Container */}
       <div
         ref={containerRef}
-        className="flex-1 min-h-0 overflow-auto p-4"
+        style={contentContainerStyles}
         onScroll={handleScroll}
         onMouseUp={handleTextSelection}
-        style={{
-          background: "linear-gradient(180deg, #0b1323 0%, #131c2b 100%)",
-        }}
       >
         {fileObject && pdfLib && (
           <pdfLib.Document
             file={fileObject}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
-              <div className="flex items-center justify-center p-8">
-                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 32 }}>
+                <div style={spinnerStyles} />
               </div>
             }
             error={
-              <div className="flex items-center justify-center p-8 text-red-400">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 32, color: "hsl(0, 70%, 60%)" }}>
                 Failed to load PDF
               </div>
             }
           >
-            <div className="flex flex-col items-center gap-4">
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
               {Array.from({ length: numPages }, (_, i) => i + 1).map(
                 (pageNum) => (
                   <div
@@ -284,12 +357,7 @@ export function PDFViewer({
                     ref={(el) => {
                       if (el) pageRefs.current.set(pageNum, el);
                     }}
-                    className="shadow-2xl"
-                    style={{
-                      boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
-                      borderRadius: "4px",
-                      overflow: "hidden",
-                    }}
+                    style={pageContainerStyles}
                   >
                     <pdfLib.Page
                       pageNumber={pageNum}
@@ -299,10 +367,16 @@ export function PDFViewer({
                       className="bg-white"
                       loading={
                         <div
-                          className="flex items-center justify-center bg-slate-800"
-                          style={{ width: 612 * scale, height: 792 * scale }}
+                          style={{ 
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "hsl(215, 20%, 15%)",
+                            width: 612 * scale, 
+                            height: 792 * scale,
+                          }}
                         >
-                          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          <div style={spinnerStyles} />
                         </div>
                       }
                     />

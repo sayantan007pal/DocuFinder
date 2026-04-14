@@ -1,12 +1,11 @@
 /**
  * ChatSessionItem — Individual chat session card with rename/delete
- * Kinetic Observatory design with gradient highlights
+ * Kinetic Observatory design aligned with Command Center nav patterns
  */
 "use client";
 
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent, CSSProperties } from "react";
 import { Icon } from "@/components/ui/icon";
-import { KineticButton } from "@/components/ui/kinetic-button";
 import type { ChatSession } from "@/types/api";
 
 interface ChatSessionItemProps {
@@ -31,6 +30,7 @@ export function ChatSessionItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.title);
   const [showActions, setShowActions] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when editing starts
@@ -80,35 +80,87 @@ export function ChatSessionItem({
     return date.toLocaleDateString();
   };
 
+  // Container styles - dashboard nav item pattern
+  const containerStyles: CSSProperties = {
+    position: "relative",
+    padding: "12px 16px",
+    borderRadius: 10,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    background: isActive
+      ? "linear-gradient(135deg, hsl(262 80% 65% / 0.2), hsl(200 90% 65% / 0.1))"
+      : isHovered
+      ? "var(--surface-container)"
+      : "transparent",
+    ...(isActive && {
+      boxShadow: "inset 0 0 0 1px hsl(262 80% 65% / 0.2)",
+    }),
+  };
+
+  // Active indicator (left border gradient)
+  const activeIndicatorStyles: CSSProperties = {
+    position: "absolute",
+    left: 0,
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 3,
+    height: 24,
+    borderRadius: "0 3px 3px 0",
+    background: "linear-gradient(180deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)",
+    opacity: isActive ? 1 : 0,
+    transition: "opacity 0.15s ease",
+  };
+
+  // Icon container styles
+  const iconContainerStyles: CSSProperties = {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: isActive 
+      ? "linear-gradient(135deg, hsl(262 80% 65% / 0.2), hsl(200 90% 65% / 0.15))"
+      : "rgba(255, 255, 255, 0.04)",
+    transition: "background 0.15s ease",
+  };
+
+  // Action button styles
+  const actionButtonStyles: CSSProperties = {
+    padding: 6,
+    borderRadius: 6,
+    background: "transparent",
+    transition: "all 0.15s ease",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
   return (
     <div
-      className={`group relative rounded-lg p-3 cursor-pointer transition-all ${
-        isActive
-          ? "bg-gradient-to-r from-purple-500/20 to-cyan-500/10"
-          : "hover:bg-white/5"
-      }`}
+      style={containerStyles}
       onClick={onClick}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
-      style={
-        isActive
-          ? {
-              boxShadow: "inset 0 0 0 1px rgba(216, 185, 255, 0.2)",
-            }
-          : {}
-      }
+      onMouseEnter={() => {
+        setShowActions(true);
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        setShowActions(false);
+        setIsHovered(false);
+      }}
     >
+      {/* Active indicator */}
+      <div style={activeIndicatorStyles} />
+
       <div className="flex items-start gap-3">
         {/* Chat Icon */}
-        <div
-          className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
-            isActive ? "bg-primary/20" : "bg-white/5"
-          }`}
-        >
+        <div style={iconContainerStyles}>
           <Icon
             name={session.doc_filter ? "description" : "chat"}
-            size={16}
-            className={isActive ? "text-primary" : "text-slate-400"}
+            size={18}
+            style={{ 
+              color: isActive ? "hsl(262, 80%, 70%)" : "hsl(215, 20%, 65%)" 
+            }}
           />
         </div>
 
@@ -123,33 +175,57 @@ export function ChatSessionItem({
               onKeyDown={handleKeyDown}
               onBlur={handleBlur}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-white/10 rounded px-2 py-1 text-sm text-white outline-none focus:ring-1 focus:ring-primary/50"
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 6,
+                background: "var(--surface-container-high)",
+                border: "none",
+                outline: "none",
+                color: "hsl(210, 40%, 98%)",
+                fontSize: 13,
+                fontFamily: "inherit",
+              }}
               disabled={isUpdating}
             />
           ) : (
             <h4
-              className={`text-sm font-medium truncate ${
-                isActive ? "text-white" : "text-slate-200"
-              }`}
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: isActive ? "hsl(210, 40%, 98%)" : "hsl(215, 20%, 85%)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                transition: "color 0.15s ease",
+              }}
             >
               {session.title}
             </h4>
           )}
           
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-slate-500">
+          <div 
+            className="flex items-center gap-2" 
+            style={{ marginTop: 4 }}
+          >
+            <span style={{ fontSize: 11, color: "hsl(215, 20%, 55%)" }}>
               {session.message_count} messages
             </span>
-            <span className="text-xs text-slate-600">•</span>
-            <span className="text-xs text-slate-500">
+            <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>•</span>
+            <span style={{ fontSize: 11, color: "hsl(215, 20%, 55%)" }}>
               {formatTime(session.updated_at)}
             </span>
           </div>
 
           {session.doc_filter && (
-            <div className="mt-1.5 flex items-center gap-1">
-              <Icon name="filter_alt" size={12} className="text-cyan-400" />
-              <span className="text-xs text-cyan-400">Document filter active</span>
+            <div 
+              className="flex items-center gap-1.5" 
+              style={{ marginTop: 6 }}
+            >
+              <Icon name="filter_alt" size={12} style={{ color: "hsl(200, 90%, 65%)" }} />
+              <span style={{ fontSize: 11, color: "hsl(200, 90%, 65%)" }}>
+                Document filter active
+              </span>
             </div>
           )}
         </div>
@@ -162,22 +238,37 @@ export function ChatSessionItem({
           >
             <button
               onClick={() => setIsEditing(true)}
-              className="p-1.5 rounded hover:bg-white/10 transition-colors"
+              style={actionButtonStyles}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
               title="Rename"
               disabled={isUpdating}
             >
-              <Icon name="edit" size={14} className="text-slate-400" />
+              <Icon name="edit" size={14} style={{ color: "hsl(215, 20%, 65%)" }} />
             </button>
             <button
               onClick={onDelete}
-              className="p-1.5 rounded hover:bg-red-500/20 transition-colors"
+              style={{
+                ...actionButtonStyles,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "hsl(0 84% 60% / 0.15)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
               title="Delete"
               disabled={isDeleting}
             >
               <Icon
                 name={isDeleting ? "hourglass_empty" : "delete"}
                 size={14}
-                className="text-red-400"
+                style={{ color: "hsl(0, 84%, 60%)" }}
+                className={isDeleting ? "animate-spin" : ""}
               />
             </button>
           </div>

@@ -1,10 +1,10 @@
 /**
  * ExportDropdown — Export conversation in multiple formats
- * Kinetic Observatory glassmorphic dropdown
+ * Kinetic Observatory glassmorphic dropdown aligned with Command Center
  */
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, CSSProperties } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { ChatMessage } from "@/types/api";
 
@@ -76,56 +76,136 @@ export function ExportDropdown({ messages, sessionTitle = "Chat" }: ExportDropdo
 
   if (messages.length === 0) return null;
 
+  const triggerStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 14px",
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 500,
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    background: isOpen ? "rgba(255, 255, 255, 0.08)" : "transparent",
+    color: "hsl(215, 20%, 65%)",
+  };
+
+  const dropdownStyles: CSSProperties = {
+    position: "absolute",
+    right: 0,
+    top: "100%",
+    marginTop: 8,
+    width: 200,
+    padding: 8,
+    borderRadius: 12,
+    zIndex: 50,
+    background: "var(--surface-container-high)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255, 255, 255, 0.06)",
+    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03)",
+  };
+
+  const menuItemStyles: CSSProperties = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "10px 14px",
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 500,
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    background: "transparent",
+    color: "hsl(215, 20%, 75%)",
+  };
+
+  const dividerStyles: CSSProperties = {
+    margin: "6px 0",
+    height: 1,
+    background: "rgba(255, 255, 255, 0.06)",
+  };
+
   return (
-    <div ref={dropdownRef} className="relative">
+    <div ref={dropdownRef} style={{ position: "relative" }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors"
-        style={{ background: isOpen ? "rgba(255, 255, 255, 0.08)" : "transparent", color: "hsl(215, 20%, 65%)" }}
-        onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"; }}
-        onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = "transparent"; }}
+        style={triggerStyles}
+        onMouseEnter={(e) => { 
+          if (!isOpen) {
+            e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+            e.currentTarget.style.color = "hsl(210, 40%, 98%)";
+          }
+        }}
+        onMouseLeave={(e) => { 
+          if (!isOpen) {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "hsl(215, 20%, 65%)";
+          }
+        }}
       >
         <Icon name="download" size={16} />
         Export
       </button>
 
       {isOpen && (
-        <div
-          className="absolute right-0 top-full mt-2 w-48 py-2 rounded-xl z-50"
-          style={{
-            background: "rgba(19, 28, 43, 0.95)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)",
-          }}
-        >
+        <div style={dropdownStyles}>
           <button
             onClick={handleCopy}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
-            style={{ color: copied ? "hsl(142, 76%, 50%)" : "hsl(215, 20%, 75%)" }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
-            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            style={{ 
+              ...menuItemStyles, 
+              color: copied ? "hsl(142, 76%, 50%)" : "hsl(215, 20%, 75%)",
+              background: copied ? "hsl(142 76% 50% / 0.08)" : "transparent",
+            }}
+            onMouseEnter={(e) => {
+              if (!copied) {
+                e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                e.currentTarget.style.color = "hsl(210, 40%, 98%)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!copied) {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "hsl(215, 20%, 75%)";
+              }
+            }}
           >
             <Icon name={copied ? "check" : "content_copy"} size={16} />
             {copied ? "Copied!" : "Copy to clipboard"}
           </button>
-          <div className="my-2 h-px" style={{ background: "rgba(255, 255, 255, 0.05)" }} />
+
+          <div style={dividerStyles} />
+
           <button
             onClick={() => handleDownload("md")}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
-            style={{ color: "hsl(215, 20%, 75%)" }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
-            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            style={menuItemStyles}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+              e.currentTarget.style.color = "hsl(210, 40%, 98%)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "hsl(215, 20%, 75%)";
+            }}
           >
             <Icon name="description" size={16} />
             Download .md
           </button>
+
           <button
             onClick={() => handleDownload("json")}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
-            style={{ color: "hsl(215, 20%, 75%)" }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
-            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            style={menuItemStyles}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+              e.currentTarget.style.color = "hsl(210, 40%, 98%)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "hsl(215, 20%, 75%)";
+            }}
           >
             <Icon name="data_object" size={16} />
             Download .json

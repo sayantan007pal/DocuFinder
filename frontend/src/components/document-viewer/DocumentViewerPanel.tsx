@@ -1,10 +1,10 @@
 /**
  * DocumentViewerPanel — Main container with file type routing and chat integration
- * Supports panel mode (in-page) and modal mode (fullscreen overlay)
+ * Command Center design with TopAppBar-style header
  */
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { DOCXViewer } from "./DOCXViewer";
@@ -21,9 +21,23 @@ import type { Document } from "@/types/api";
 const PDFViewer = dynamic(() => import("./PDFViewer").then((mod) => mod.PDFViewer), {
   ssr: false,
   loading: () => (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
-      <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-      <span className="text-sm text-slate-400">Loading PDF viewer...</span>
+    <div style={{ 
+      display: "flex", 
+      flexDirection: "column", 
+      alignItems: "center", 
+      justifyContent: "center", 
+      height: "100%", 
+      gap: 16 
+    }}>
+      <div style={{ 
+        width: 32, 
+        height: 32, 
+        borderRadius: "50%", 
+        border: "2px solid rgba(162, 136, 247, 0.3)", 
+        borderTopColor: "hsl(262, 80%, 70%)",
+        animation: "spin 0.8s linear infinite",
+      }} />
+      <span style={{ fontSize: 13, color: "hsl(215, 20%, 55%)" }}>Loading PDF viewer...</span>
     </div>
   ),
 });
@@ -54,6 +68,14 @@ function getFileType(filename: string): FileType {
   }
 }
 
+function getFileIcon(fileType: FileType): string {
+  switch (fileType) {
+    case "pdf": return "picture_as_pdf";
+    case "docx": return "article";
+    default: return "description";
+  }
+}
+
 export function DocumentViewerPanel({
   document,
   onClose,
@@ -69,29 +91,23 @@ export function DocumentViewerPanel({
 
   const fileType = getFileType(document.filename);
 
-  // Handle text selection from viewers
   const handleTextSelect = useCallback((text: string) => {
     setSelectedText(text);
   }, []);
 
-  // Handle page change
   const handlePageChange = useCallback((page: number, total: number) => {
     setCurrentPage(page);
     setTotalPages(total);
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape to close
       if (e.key === "Escape" && mode === "modal") {
         onClose();
         return;
       }
-      // Ctrl/Cmd + F to focus search
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
-        // Search bar will auto-focus
       }
     };
 
@@ -99,8 +115,16 @@ export function DocumentViewerPanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, onClose]);
 
-  // Render the viewer based on file type
   const renderViewer = () => {
+    const unsupportedStyles: CSSProperties = {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "100%",
+      gap: 16,
+    };
+
     switch (fileType) {
       case "pdf":
         return (
@@ -133,9 +157,19 @@ export function DocumentViewerPanel({
         );
       default:
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <Icon name="description" size={64} className="text-slate-600" />
-            <span className="text-slate-400">
+          <div style={unsupportedStyles}>
+            <div style={{
+              width: 80,
+              height: 80,
+              borderRadius: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255, 255, 255, 0.04)",
+            }}>
+              <Icon name="description" size={40} style={{ color: "hsl(215, 20%, 45%)" }} />
+            </div>
+            <span style={{ fontSize: 14, color: "hsl(215, 20%, 55%)" }}>
               Unsupported file type: {document.filename}
             </span>
           </div>
@@ -143,38 +177,94 @@ export function DocumentViewerPanel({
     }
   };
 
-  // Panel content
+  // Styles
+  const headerStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 20px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+    background: "var(--surface-container-low)",
+  };
+
+  const headerLeftStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    minWidth: 0,
+  };
+
+  const iconContainerStyles: CSSProperties = {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "linear-gradient(135deg, hsl(262, 80%, 70%), hsl(200, 90%, 65%))",
+    flexShrink: 0,
+  };
+
+  const titleStyles: CSSProperties = {
+    fontSize: 15,
+    fontWeight: 600,
+    color: "hsl(210, 40%, 98%)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontFamily: "var(--font-space-grotesk), sans-serif",
+  };
+
+  const subtitleStyles: CSSProperties = {
+    fontSize: 12,
+    color: "hsl(215, 20%, 55%)",
+    marginTop: 2,
+  };
+
+  const headerRightStyles: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  };
+
+  const contentAreaStyles: CSSProperties = {
+    display: "flex",
+    flex: 1,
+    minHeight: 0,
+  };
+
+  const viewerContainerStyles: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    borderRight: showChat ? "1px solid rgba(255, 255, 255, 0.06)" : "none",
+  };
+
+  const chatContainerStyles: CSSProperties = {
+    width: 400,
+    flexShrink: 0,
+    background: "var(--surface-container-low)",
+  };
+
   const panelContent = (
-    <div className="flex flex-col h-full w-full overflow-hidden">
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b border-white/5"
-        style={{ background: "rgba(19, 28, 43, 0.95)" }}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <Icon
-            name={
-              fileType === "pdf"
-                ? "picture_as_pdf"
-                : fileType === "docx"
-                ? "article"
-                : "description"
-            }
-            size={24}
-            className="text-primary shrink-0"
-          />
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-white truncate">
-              {document.filename}
-            </h3>
-            <p className="text-xs text-slate-400">
-              {totalPages} pages •{" "}
-              {(document.file_size / 1024).toFixed(1)} KB
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
+      {/* Header - TopAppBar style */}
+      <div style={headerStyles}>
+        <div style={headerLeftStyles}>
+          <div style={iconContainerStyles}>
+            <Icon name={getFileIcon(fileType)} size={22} style={{ color: "white" }} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={titleStyles}>{document.filename}</h3>
+            <p style={subtitleStyles}>
+              {totalPages} {totalPages === 1 ? "page" : "pages"} • {(document.file_size / 1024).toFixed(1)} KB
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div style={headerRightStyles}>
           <ViewerModeToggle mode={mode} onChange={setMode} />
           <KineticButton
             variant={showChat ? "secondary" : "ghost"}
@@ -202,15 +292,15 @@ export function DocumentViewerPanel({
       />
 
       {/* Content Area */}
-      <div className="flex flex-1 min-h-0">
+      <div style={contentAreaStyles}>
         {/* Document Viewer */}
-        <div className={`flex flex-col flex-1 min-w-0 min-h-0 ${showChat ? "border-r border-white/5" : ""}`}>
+        <div style={viewerContainerStyles}>
           {renderViewer()}
         </div>
 
         {/* Chat Panel */}
         {showChat && (
-          <div className="w-96 shrink-0">
+          <div style={chatContainerStyles}>
             <DocumentChatPanel
               docId={document.id}
               filename={document.filename}
@@ -224,29 +314,49 @@ export function DocumentViewerPanel({
     </div>
   );
 
-  // Panel mode: render inline
+  // Panel mode styles
+  const panelModeStyles: CSSProperties = {
+    height: "100%",
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    background: "var(--surface-container)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+  };
+
+  // Modal mode styles
+  const modalOverlayStyles: CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 50,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0, 0, 0, 0.85)",
+    backdropFilter: "blur(8px)",
+  };
+
+  const modalContainerStyles: CSSProperties = {
+    width: "95vw",
+    height: "95vh",
+    borderRadius: 20,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    background: "var(--surface-base)",
+    border: "1px solid rgba(255, 255, 255, 0.06)",
+    boxShadow: "0 32px 64px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03)",
+  };
+
   if (mode === "panel") {
-    return (
-      <div className="h-full w-full flex flex-col overflow-hidden" style={{ background: "rgba(19, 28, 43, 0.8)", backdropFilter: "blur(12px)" }}>
-        {panelContent}
-      </div>
-    );
+    return <div style={panelModeStyles}>{panelContent}</div>;
   }
 
-  // Modal mode: render as fullscreen overlay via portal
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0, 0, 0, 0.8)" }}
-    >
-      <div
-        className="w-[95vw] h-[95vh] rounded-2xl flex flex-col"
-        style={{
-          background: "rgba(11, 19, 35, 0.98)",
-          backdropFilter: "blur(24px)",
-          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-        }}
-      >
+    <div style={modalOverlayStyles}>
+      <div style={modalContainerStyles}>
         {panelContent}
       </div>
     </div>,
