@@ -70,11 +70,14 @@ export default function IntelligenceTerminalPage() {
         ...(initialDocId ? { doc_ids: [initialDocId] } : {}),
       }),
     onSuccess: (data, query) => {
+      // Only show citations with score > 50%
+      const filteredCitations = data.results.filter(r => r.score > 0.5);
+      
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: data.answer || "I found relevant information in your documents.",
-        citations: data.results,
+        citations: filteredCitations,
         timestamp: new Date(),
         metadata: {
           took_ms: data.took_ms,
