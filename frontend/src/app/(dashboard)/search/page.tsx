@@ -1,16 +1,26 @@
 /**
- * Intelligence Terminal (Kinetic Terminal v1.0)
- * Based on stitch_the_command_center_prd/intelligence_terminal design
+ * Intelligence Terminal - Search & Chat
+ * Styled to match Document Matrix design system
  */
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 import { useChatSync } from "@/hooks/useChatSync";
-import { Icon } from "@/components/ui/icon";
+import { TopAppBar } from "@/components/layout/top-app-bar";
+import {
+  Icon,
+  Icons,
+  GlassmorphicCard,
+  KineticButton,
+  KineticInput,
+  StatusBadge,
+  ProgressBar,
+  SemanticDensityBar,
+} from "@/components/ui";
 import type { SearchResponse, SearchHit, ChatMessage } from "@/types/api";
-import Link from "next/link";
 
 interface FormattedMessage extends ChatMessage {
   created_at: string;
@@ -24,9 +34,9 @@ export default function IntelligenceTerminalPage() {
   const [selectedCitation, setSelectedCitation] = useState<SearchHit | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Use chat sync hook for API-backed sessions
   const {
     sessions,
     messages,
@@ -45,12 +55,10 @@ export default function IntelligenceTerminalPage() {
     enabled: true,
   });
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-select first session or create new one
   useEffect(() => {
     const initSession = async () => {
       if (sessions.length > 0 && !activeSessionId) {
@@ -71,7 +79,6 @@ export default function IntelligenceTerminalPage() {
     initSession();
   }, [sessions, activeSessionId, isLoadingSessions, isCreatingSession, createSession, initialDocId]);
 
-  // Handle new chat session
   const handleNewSession = useCallback(async () => {
     try {
       const newSession = await createSession({
@@ -84,7 +91,6 @@ export default function IntelligenceTerminalPage() {
     }
   }, [createSession, initialDocId]);
 
-  // Handle session delete
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       try {
@@ -104,7 +110,6 @@ export default function IntelligenceTerminalPage() {
     [deleteSession, activeSessionId, sessions]
   );
 
-  // Handle sending messages with RAG search
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!activeSessionId || !content.trim()) return;
@@ -138,7 +143,6 @@ export default function IntelligenceTerminalPage() {
           },
         });
 
-        // Auto-select first citation
         if (filteredCitations.length > 0) {
           setSelectedCitation(filteredCitations[0]);
         }
@@ -177,414 +181,611 @@ export default function IntelligenceTerminalPage() {
     }
   };
 
-  // Format messages
   const formattedMessages: FormattedMessage[] = messages.map((m) => ({
     ...m,
     created_at: m.created_at || new Date().toISOString(),
   }));
 
-  // Get latest assistant message metadata for right panel
   const latestAssistantMsg = [...formattedMessages].reverse().find((m) => m.role === "assistant");
-  const matchScore = selectedCitation ? (selectedCitation.score * 100).toFixed(1) : latestAssistantMsg?.citations?.[0] ? (latestAssistantMsg.citations[0].score * 100).toFixed(1) : null;
+  const matchScore = selectedCitation 
+    ? (selectedCitation.score * 100).toFixed(1) 
+    : latestAssistantMsg?.citations?.[0] 
+      ? (latestAssistantMsg.citations[0].score * 100).toFixed(1) 
+      : null;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#0b1323", color: "#dbe2f8" }}>
-      {/* Left Sidebar: The Observatory */}
-      <aside
-        className="fixed left-0 top-0 h-full flex flex-col w-64 z-40"
-        style={{ background: "rgba(15, 23, 42, 0.4)", backdropFilter: "blur(24px)" }}
-      >
-        <div className="p-6">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold"
-              style={{ background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)" }}
-            >
-              O
-            </div>
-            <div>
-              <h1
-                className="text-xl font-bold tracking-tight"
-                style={{
-                  fontFamily: "'Space Grotesk', sans-serif",
-                  background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                The Observatory
-              </h1>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Precision Intelligence
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="space-y-1">
-            <button
-              onClick={handleNewSession}
-              className="w-full flex items-center gap-3 px-4 py-2 text-violet-300 transition-all duration-300"
-              style={{ background: "rgba(255, 255, 255, 0.05)", borderRight: "2px solid hsl(262, 80%, 65%)" }}
-            >
-              <Icon name="add_box" size={18} />
-              <span className="text-sm" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>New Chat</span>
-            </button>
-            <Link href="/search" className="w-full flex items-center gap-3 px-4 py-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-300">
-              <Icon name="history" size={18} />
-              <span className="text-sm" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>History</span>
-            </Link>
-            <Link href="/search" className="w-full flex items-center gap-3 px-4 py-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-300">
-              <Icon name="auto_awesome" size={18} />
-              <span className="text-sm" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Intelligence</span>
-            </Link>
-            <Link href="/documents" className="w-full flex items-center gap-3 px-4 py-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-300">
-              <Icon name="inventory_2" size={18} />
-              <span className="text-sm" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Knowledge</span>
-            </Link>
-            <button className="w-full flex items-center gap-3 px-4 py-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-300">
-              <Icon name="settings" size={18} />
-              <span className="text-sm" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Settings</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Recent Sessions */}
-        <div className="mt-auto p-6 space-y-4">
-          <div className="text-[10px] uppercase tracking-widest text-slate-600 font-bold px-4">Recent Sessions</div>
-          <div className="space-y-2 overflow-y-auto max-h-[300px]">
-            {sessions.slice(0, 5).map((session) => (
-              <div
-                key={session.id}
-                onClick={() => setActiveSessionId(session.id)}
-                className={`px-4 py-2 text-xs rounded cursor-pointer transition-colors border-l ${
-                  session.id === activeSessionId ? "text-violet-300 bg-white/5 border-violet-500" : "text-slate-400 hover:bg-white/5 border-white/5"
-                }`}
-              >
-                {session.title}
-              </div>
-            ))}
-            {sessions.length === 0 && (
-              <div className="px-4 py-2 text-xs text-slate-500">No sessions yet</div>
-            )}
-          </div>
-
-          {/* User Profile */}
-          <div className="flex items-center gap-3 pt-4 border-t border-white/5">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
-              <Icon name="person" size={16} className="text-slate-400" />
-            </div>
-            <div>
-              <p className="text-xs font-bold">Operator 01</p>
-              <p className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: isOnline ? "#22c55e" : "#f59e0b" }} />
-                {isOnline ? "System Active" : "Offline"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Top NavBar: Kinetic Terminal */}
-      <header
-        className="fixed top-0 right-0 h-16 flex justify-between items-center px-8 z-50"
-        style={{ left: "256px", background: "rgba(15, 23, 42, 0.2)", backdropFilter: "blur(16px)" }}
-      >
-        <div className="flex items-center gap-8">
-          <span className="font-black text-white tracking-tighter text-lg uppercase">Kinetic Terminal v1.0</span>
-          <nav className="hidden md:flex gap-6">
-            <a className="text-cyan-400 border-b border-cyan-400 font-medium uppercase tracking-widest text-[10px] pb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }} href="#">
-              Models
-            </a>
-            <a className="text-slate-400 hover:text-white transition-colors font-medium uppercase tracking-widest text-[10px] pb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }} href="#">
-              Nodes
-            </a>
-            <a className="text-slate-400 hover:text-white transition-colors font-medium uppercase tracking-widest text-[10px] pb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }} href="#">
-              Protocols
-            </a>
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <input
-            className="border-none text-[10px] tracking-widest font-bold text-cyan-400 placeholder-slate-600 focus:ring-1 focus:ring-cyan-400/30 rounded-full py-1.5 px-4 w-48 transition-all outline-none"
-            style={{ background: "rgba(6, 14, 29, 0.5)" }}
-            placeholder="GLOBAL SCANNER..."
-            type="text"
-          />
-          <div className="flex gap-3">
-            <Icon name="notifications" size={20} className="text-slate-400 cursor-pointer hover:text-cyan-400 transition-colors" />
-            <Icon name="account_circle" size={20} className="text-slate-400 cursor-pointer hover:text-cyan-400 transition-colors" />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 pt-16 h-full flex flex-col relative" style={{ marginLeft: "256px", marginRight: "320px", background: "#0b1323" }}>
-        <div className="flex-1 overflow-y-auto px-12 py-10 space-y-12">
-          {formattedMessages.length === 0 ? (
-            /* Empty State */
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div
-                className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
-                style={{ background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)" }}
-              >
-                <Icon name="auto_awesome" size={40} className="text-white" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Intelligence Terminal Ready
-              </h2>
-              <p className="text-slate-500 max-w-md">
-                Query your document intelligence core. Ask questions about your uploaded documents and get precise, sourced answers.
-              </p>
-            </div>
-          ) : (
-            <>
-              {formattedMessages.map((msg) => (
-                <div key={msg.id}>
-                  {msg.role === "user" ? (
-                    /* User Message */
-                    <div className="flex flex-col items-end space-y-2 max-w-2xl ml-auto">
-                      <div
-                        className="rounded-full px-6 py-3 text-sm shadow-lg"
-                        style={{ background: "#222a3a", color: "#dbe2f8" }}
-                      >
-                        {msg.content}
-                      </div>
-                      <span className="text-[10px] uppercase tracking-widest text-slate-500 px-4">
-                        {new Date(msg.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })} • Operator
-                      </span>
-                    </div>
-                  ) : (
-                    /* AI Message */
-                    <div className="flex flex-col space-y-6 max-w-3xl">
-                      <div className="flex gap-4">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)" }}
-                        >
-                          <Icon name="auto_awesome" size={20} className="text-white" />
-                        </div>
-                        <div className="space-y-4">
-                          <div className="text-lg font-light leading-relaxed" style={{ color: "#dbe2f8" }}>
-                            {msg.content.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
-                              if (part.startsWith("**") && part.endsWith("**")) {
-                                return (
-                                  <span key={i} className="text-violet-400 font-bold">
-                                    {part.slice(2, -2)}
-                                  </span>
-                                );
-                              }
-                              return part;
-                            })}
-                          </div>
-
-                          {/* Sources Section */}
-                          {msg.citations && msg.citations.length > 0 && (
-                            <div className="pt-6 border-t border-white/5">
-                              <h4 className="text-[10px] uppercase tracking-widest text-slate-500 mb-3 font-bold">Verified Sources</h4>
-                              <div className="flex flex-wrap gap-2">
-                                {msg.citations.map((citation, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => setSelectedCitation(citation)}
-                                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 transition-all border ${
-                                      selectedCitation?.doc_id === citation.doc_id && selectedCitation?.page_number === citation.page_number
-                                        ? "bg-violet-500/20 border-violet-500/50"
-                                        : "bg-slate-800/50 hover:bg-violet-500/20 border-white/5"
-                                    }`}
-                                  >
-                                    <Icon name="description" size={14} className="text-violet-400" />
-                                    <span className="text-xs text-slate-300">
-                                      {citation.page_number ? `Page ${citation.page_number} - ` : ""}{citation.filename}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Loading State */}
-              {(isSearching || isAddingMessage) && (
-                <div className="flex gap-4 opacity-50">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: "#2d3546" }}>
-                    <Icon name="hourglass_empty" size={20} className="text-slate-500" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" />
-                    <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
-                    <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </>
-          )}
-        </div>
-
-        {/* Input Area */}
-        <div className="p-8 mt-auto">
-          <div
-            className="max-w-4xl mx-auto rounded-full border border-white/5 p-2 flex items-center gap-3"
-            style={{ background: "rgba(255, 255, 255, 0.04)", backdropFilter: "blur(12px)" }}
-          >
-            <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors">
-              <Icon name="attach_file" size={20} />
-            </button>
-            <input
-              className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-white placeholder-slate-600 outline-none"
-              placeholder="Query the intelligence core..."
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={!activeSessionId || !isOnline}
+    <>
+      <TopAppBar
+        actions={
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <StatusBadge 
+              status={isOnline ? "completed" : "failed"} 
+              label={isOnline ? "Online" : "Offline"} 
+              size="sm" 
             />
-            <button
-              onClick={handleSubmit}
-              disabled={!inputValue.trim() || !activeSessionId || !isOnline || isSearching}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)" }}
-            >
-              <Icon name="arrow_upward" size={20} />
-            </button>
+            <KineticButton variant="primary" icon="add" onClick={handleNewSession}>
+              New Chat
+            </KineticButton>
           </div>
-          <p className="text-[10px] text-center mt-4 text-slate-600 uppercase tracking-widest">
-            Quantum Engine v4.2 • Encryption Active
-          </p>
-        </div>
-      </main>
+        }
+      />
 
-      {/* Right Panel: Contextual Intelligence */}
-      <aside
-        className="fixed right-0 top-0 h-full w-80 border-l border-white/5 flex flex-col z-40"
-        style={{ background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(24px)" }}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: selectedCitation ? "280px 1fr 340px" : "280px 1fr",
+          gap: 24,
+          minHeight: "calc(100vh - 180px)",
+        }}
       >
-        <div className="p-6 border-b border-white/5">
-          <h2 className="text-xs font-bold text-white uppercase tracking-wider mb-1">Contextual Intelligence</h2>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest">Right Wing Analysis</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {/* Match Score */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-end">
-              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Match Score</span>
-              <span
-                className="text-3xl font-black"
-                style={{
-                  fontFamily: "'Space Grotesk', sans-serif",
-                  background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                {matchScore ? `${matchScore}%` : "—"}
+        {/* Left Panel: Sessions */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <GlassmorphicCard style={{ padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span className="uppercase-label">Chat Sessions</span>
+              <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>
+                {sessions.length} total
               </span>
             </div>
-            <div className="h-1 w-full rounded-full overflow-hidden" style={{ background: "#2d3546" }}>
-              <div
-                className="h-full transition-all duration-500"
-                style={{
-                  width: matchScore ? `${matchScore}%` : "0%",
-                  background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)",
-                  boxShadow: "0 0 15px rgba(159, 98, 241, 0.5)",
-                }}
-              />
-            </div>
-          </div>
 
-          {/* Selection Logic */}
-          <div className="space-y-3">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Selection Logic</span>
-            <div className="rounded-xl p-4 border border-white/5" style={{ background: "#131c2b" }}>
-              <p className="text-xs leading-relaxed text-slate-400">
-                {selectedCitation ? (
-                  <>
-                    High semantic alignment detected between user query and document cluster{" "}
-                    <span className="text-violet-400">{selectedCitation.filename}</span>.
-                    <br /><br />
-                    Confidence score: <span className="text-cyan-400">{(selectedCitation.score * 100).toFixed(1)}%</span> match
-                    {selectedCitation.page_number && (
-                      <> on page <span className="text-cyan-400">{selectedCitation.page_number}</span></>
-                    )}.
-                  </>
-                ) : latestAssistantMsg ? (
-                  "Select a source document to view detailed selection logic and semantic alignment analysis."
-                ) : (
-                  "Start a conversation to see contextual intelligence analysis."
-                )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+              {isLoadingSessions ? (
+                Array.from({ length: 3 }).map((_, i) => <SessionSkeleton key={i} />)
+              ) : sessions.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center" }}>
+                  <Icon name="chat_bubble_outline" size={32} style={{ color: "hsl(215, 20%, 45%)", marginBottom: 8 }} />
+                  <p style={{ fontSize: 13, color: "hsl(215, 20%, 55%)" }}>No sessions yet</p>
+                </div>
+              ) : (
+                sessions.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    active={session.id === activeSessionId}
+                    onSelect={() => setActiveSessionId(session.id)}
+                    onDelete={() => handleDeleteSession(session.id)}
+                  />
+                ))
+              )}
+            </div>
+          </GlassmorphicCard>
+
+          {/* Quick Links */}
+          <GlassmorphicCard style={{ padding: 16 }}>
+            <span className="uppercase-label" style={{ marginBottom: 12, display: "block" }}>Quick Links</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <QuickLink href="/documents" icon="folder" label="Documents" />
+              <QuickLink href="/graph" icon="hub" label="Knowledge Graph" />
+            </div>
+          </GlassmorphicCard>
+
+          {/* User Status */}
+          <GlassmorphicCard style={{ padding: 16, marginTop: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "var(--surface-container-high)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon name="person" size={20} style={{ color: "hsl(215, 20%, 65%)" }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 500, color: "hsl(210, 40%, 98%)" }}>Operator</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: isOnline ? "hsl(142, 76%, 50%)" : "hsl(40, 100%, 55%)",
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: "hsl(215, 20%, 55%)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {isOnline ? "Connected" : "Offline"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </GlassmorphicCard>
+        </div>
+
+        {/* Center Panel: Chat */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minHeight: 0 }}>
+          <GlassmorphicCard style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Messages Area */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+              {formattedMessages.length === 0 ? (
+                <EmptyState onNewChat={handleNewSession} />
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                  {formattedMessages.map((msg) => (
+                    <MessageBubble
+                      key={msg.id}
+                      message={msg}
+                      selectedCitation={selectedCitation}
+                      onSelectCitation={setSelectedCitation}
+                    />
+                  ))}
+
+                  {(isSearching || isAddingMessage) && <TypingIndicator />}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
+
+            {/* Input Area */}
+            <div style={{ padding: 16, borderTop: "1px solid var(--surface-container-high)" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 8,
+                  background: "var(--surface-container-low)",
+                  borderRadius: 12,
+                }}
+              >
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={!activeSessionId || !isOnline}
+                  placeholder="Ask about your documents..."
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontSize: 14,
+                    color: "hsl(210, 40%, 98%)",
+                    padding: "8px 12px",
+                  }}
+                />
+                <KineticButton
+                  variant="primary"
+                  icon="send"
+                  onClick={handleSubmit}
+                  disabled={!inputValue.trim() || !activeSessionId || !isOnline || isSearching}
+                  size="sm"
+                >
+                  Send
+                </KineticButton>
+              </div>
+              <p style={{ fontSize: 11, color: "hsl(215, 20%, 45%)", textAlign: "center", marginTop: 8 }}>
+                Press Enter to send • Searches across all your documents
               </p>
             </div>
-          </div>
+          </GlassmorphicCard>
+        </div>
 
-          {/* Inference Metadata */}
-          <div className="space-y-4">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Inference Metadata</span>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-3 rounded-lg" style={{ background: "rgba(255, 255, 255, 0.05)" }}>
-                <div className="text-[9px] text-slate-500 uppercase mb-1">Tokens</div>
-                <div className="text-sm font-medium">{latestAssistantMsg?.metadata?.tokens || "—"}</div>
-              </div>
-              <div className="p-3 rounded-lg" style={{ background: "rgba(255, 255, 255, 0.05)" }}>
-                <div className="text-[9px] text-slate-500 uppercase mb-1">Latency</div>
-                <div className="text-sm font-medium">{latestAssistantMsg?.metadata?.took_ms ? `${latestAssistantMsg.metadata.took_ms}ms` : "—"}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Document Preview Card */}
-          {selectedCitation && (
-            <div className="mt-auto pt-6">
-              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-3 block">Document Preview</span>
-              <Link href={`/documents?doc_id=${selectedCitation.doc_id}&page=${selectedCitation.page_number || 1}`}>
-                <div
-                  className="group relative cursor-pointer overflow-hidden rounded-xl border border-white/10 aspect-[3/4] shadow-2xl transition-transform hover:scale-[1.02]"
-                  style={{ background: "#0f172a" }}
+        {/* Right Panel: Context Intelligence */}
+        {selectedCitation && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Match Score */}
+            <GlassmorphicCard variant="elevated" style={{ padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <span className="uppercase-label">Match Score</span>
+                <span
+                  className="font-display"
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    background: "linear-gradient(135deg, hsl(262, 80%, 70%), hsl(200, 90%, 65%))",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <div className="text-[10px] text-violet-400 font-bold uppercase mb-1">{selectedCitation.filename}</div>
-                    <div className="text-xs text-white font-medium line-clamp-2">
-                      {selectedCitation.chunk_text.slice(0, 100)}...
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center border border-white/20"
-                      style={{ background: "rgba(255, 255, 255, 0.04)", backdropFilter: "blur(12px)" }}
-                    >
-                      <Icon name="visibility" size={20} className="text-white" />
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </div>
-          )}
-        </div>
+                  {matchScore}%
+                </span>
+              </div>
+              <ProgressBar value={parseFloat(matchScore || "0")} variant="gradient" size="md" />
+            </GlassmorphicCard>
 
-        {/* Footer Actions */}
-        <div className="p-6 border-t border-white/5 flex gap-2">
-          <button
-            className="flex-1 text-xs font-bold uppercase tracking-widest py-3 rounded-lg hover:bg-slate-700 transition-colors border border-white/5"
-            style={{ background: "#2d3546" }}
-          >
-            Share
-          </button>
-          <button
-            className="flex-1 text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-lg"
-            style={{ background: "linear-gradient(135deg, hsl(262, 80%, 70%) 0%, hsl(200, 90%, 65%) 100%)" }}
-          >
-            Export
-          </button>
-        </div>
-      </aside>
+            {/* Source Document */}
+            <GlassmorphicCard style={{ padding: 24 }}>
+              <span className="uppercase-label" style={{ marginBottom: 16, display: "block" }}>Source Document</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon name="description" size={22} style={{ color: "#fff" }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: "hsl(210, 40%, 98%)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {selectedCitation.filename}
+                  </p>
+                  {selectedCitation.page_number && (
+                    <p style={{ fontSize: 12, color: "hsl(215, 20%, 55%)", marginTop: 2 }}>
+                      Page {selectedCitation.page_number}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <SemanticDensityBar density={selectedCitation.score} label="Semantic Relevance" />
+            </GlassmorphicCard>
+
+            {/* Excerpt Preview */}
+            <GlassmorphicCard style={{ padding: 24, flex: 1, overflowY: "auto" }}>
+              <span className="uppercase-label" style={{ marginBottom: 16, display: "block" }}>Excerpt</span>
+              <div
+                style={{
+                  padding: 16,
+                  background: "var(--surface-container-low)",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: "hsl(215, 20%, 75%)",
+                  lineHeight: 1.7,
+                }}
+              >
+                {selectedCitation.chunk_text}
+              </div>
+            </GlassmorphicCard>
+
+            {/* Inference Metadata */}
+            {latestAssistantMsg?.metadata && (
+              <GlassmorphicCard style={{ padding: 24 }}>
+                <span className="uppercase-label" style={{ marginBottom: 12, display: "block" }}>Inference Metadata</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <MetricChip label="Tokens" value={latestAssistantMsg.metadata.tokens || "—"} />
+                  <MetricChip label="Latency" value={latestAssistantMsg.metadata.took_ms ? `${latestAssistantMsg.metadata.took_ms}ms` : "—"} />
+                  {latestAssistantMsg.metadata.cached && <MetricChip label="Cache" value="Hit" />}
+                  {latestAssistantMsg.metadata.provider && <MetricChip label="Model" value={latestAssistantMsg.metadata.provider} />}
+                </div>
+              </GlassmorphicCard>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 12 }}>
+              <Link href={`/documents?doc_id=${selectedCitation.doc_id}&page=${selectedCitation.page_number || 1}`} style={{ flex: 1 }}>
+                <KineticButton variant="primary" icon="visibility" fullWidth>
+                  View Source
+                </KineticButton>
+              </Link>
+              <KineticButton
+                variant="secondary"
+                icon="close"
+                onClick={() => setSelectedCitation(null)}
+              >
+                Dismiss
+              </KineticButton>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// Session List Item
+function SessionItem({
+  session,
+  active,
+  onSelect,
+  onDelete,
+}: {
+  session: { id: string; title: string; message_count?: number; updated_at?: string };
+  active: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        padding: 12,
+        borderRadius: 10,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        transition: "all 0.15s ease",
+        background: active ? "linear-gradient(135deg, hsl(262 80% 65% / 0.15), hsl(200 90% 65% / 0.08))" : "transparent",
+        borderLeft: active ? "3px solid hsl(262, 80%, 65%)" : "3px solid transparent",
+      }}
+    >
+      <Icon
+        name="chat"
+        size={18}
+        style={{ color: active ? "hsl(262, 80%, 70%)" : "hsl(215, 20%, 55%)" }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: 13,
+            fontWeight: active ? 500 : 400,
+            color: active ? "hsl(210, 40%, 98%)" : "hsl(215, 20%, 75%)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {session.title || "New Chat"}
+        </p>
+        {session.message_count !== undefined && (
+          <p style={{ fontSize: 11, color: "hsl(215, 20%, 45%)", marginTop: 2 }}>
+            {session.message_count} messages
+          </p>
+        )}
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        style={{
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          padding: 4,
+          borderRadius: 4,
+          opacity: 0.5,
+          transition: "opacity 0.15s",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+        onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.5")}
+      >
+        <Icon name="delete" size={14} style={{ color: "hsl(215, 20%, 55%)" }} />
+      </button>
+    </div>
+  );
+}
+
+// Session Skeleton
+function SessionSkeleton() {
+  return (
+    <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ width: 18, height: 18, borderRadius: 4, background: "var(--surface-container-high)" }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ width: "80%", height: 13, borderRadius: 4, background: "var(--surface-container-high)", marginBottom: 6 }} />
+        <div style={{ width: "40%", height: 11, borderRadius: 4, background: "var(--surface-container)" }} />
+      </div>
+    </div>
+  );
+}
+
+// Quick Link
+function QuickLink({ href, icon, label }: { href: string; icon: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 8,
+        color: "hsl(215, 20%, 65%)",
+        fontSize: 13,
+        textDecoration: "none",
+        transition: "all 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--surface-container-low)";
+        e.currentTarget.style.color = "hsl(210, 40%, 98%)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+        e.currentTarget.style.color = "hsl(215, 20%, 65%)";
+      }}
+    >
+      <Icon name={icon} size={18} />
+      {label}
+    </Link>
+  );
+}
+
+// Empty State
+function EmptyState({ onNewChat }: { onNewChat: () => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", padding: 48 }}>
+      <div
+        className="gradient-glow"
+        style={{
+          width: 80,
+          height: 80,
+          borderRadius: 20,
+          background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 24,
+        }}
+      >
+        <Icon name="auto_awesome" size={40} style={{ color: "#fff" }} />
+      </div>
+      <h2 className="font-display" style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: 8, color: "hsl(210, 40%, 98%)" }}>
+        Intelligence Terminal
+      </h2>
+      <p style={{ color: "hsl(215, 20%, 65%)", textAlign: "center", maxWidth: 400, marginBottom: 24, fontSize: 14, lineHeight: 1.6 }}>
+        Ask questions about your documents and get precise, sourced answers powered by semantic search.
+      </p>
+      <div style={{ display: "flex", gap: 12 }}>
+        <KineticButton variant="primary" icon="search" onClick={onNewChat}>
+          Start Searching
+        </KineticButton>
+        <Link href="/documents">
+          <KineticButton variant="secondary" icon="upload">
+            Upload Documents
+          </KineticButton>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// Message Bubble
+function MessageBubble({
+  message,
+  selectedCitation,
+  onSelectCitation,
+}: {
+  message: FormattedMessage;
+  selectedCitation: SearchHit | null;
+  onSelectCitation: (citation: SearchHit) => void;
+}) {
+  const isUser = message.role === "user";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
+      <div
+        style={{
+          maxWidth: isUser ? "70%" : "100%",
+          padding: 16,
+          borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+          background: isUser
+            ? "linear-gradient(135deg, hsl(262 80% 65% / 0.2), hsl(200 90% 65% / 0.1))"
+            : "var(--surface-container-low)",
+        }}
+      >
+        {!isUser && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="auto_awesome" size={16} style={{ color: "#fff" }} />
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 500, color: "hsl(262, 80%, 75%)" }}>Assistant</span>
+          </div>
+        )}
+
+        <p style={{ fontSize: 14, lineHeight: 1.65, color: "hsl(210, 40%, 98%)" }}>
+          {message.content.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+            if (part.startsWith("**") && part.endsWith("**")) {
+              return (
+                <span key={i} style={{ fontWeight: 600, color: "hsl(262, 80%, 75%)" }}>
+                  {part.slice(2, -2)}
+                </span>
+              );
+            }
+            return part;
+          })}
+        </p>
+
+        {/* Citations */}
+        {message.citations && message.citations.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--surface-container-high)" }}>
+            <span className="uppercase-label" style={{ marginBottom: 8, display: "block" }}>Sources</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {message.citations.map((citation, idx) => {
+                const isSelected = selectedCitation?.doc_id === citation.doc_id && selectedCitation?.page_number === citation.page_number;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => onSelectCitation(citation)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      background: isSelected ? "hsl(262 80% 65% / 0.2)" : "var(--surface-container)",
+                      color: isSelected ? "hsl(262, 80%, 75%)" : "hsl(215, 20%, 75%)",
+                    }}
+                  >
+                    <Icon name="description" size={14} />
+                    <span style={{ fontSize: 12 }}>
+                      {citation.page_number ? `p.${citation.page_number}` : ""} {citation.filename.slice(0, 20)}...
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)", marginTop: 6, padding: "0 8px" }}>
+        {new Date(message.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+      </span>
+    </div>
+  );
+}
+
+// Typing Indicator
+function TypingIndicator() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          background: "var(--surface-container-high)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name="hourglass_empty" size={16} style={{ color: "hsl(215, 20%, 55%)" }} />
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {[0, 150, 300].map((delay) => (
+          <div
+            key={delay}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "hsl(262, 80%, 65%)",
+              animation: "pulse 1.2s ease-in-out infinite",
+              animationDelay: `${delay}ms`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Metric Chip
+function MetricChip({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 8,
+        background: "var(--surface-container-low)",
+      }}
+    >
+      <p style={{ fontSize: 10, color: "hsl(215, 20%, 45%)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {label}
+      </p>
+      <p style={{ fontSize: 14, fontWeight: 500, color: "hsl(210, 40%, 98%)" }}>{value}</p>
     </div>
   );
 }
