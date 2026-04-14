@@ -19,8 +19,7 @@ log = structlog.get_logger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ParserProvider(str, Enum):
-    UNSTRUCTURED = "unstructured"   # default: self-hosted Docker
-    LITEPARSE = "liteparse"         # local-first, fast (~6s/doc)
+    LITEPARSE = "liteparse"         # default: local-first, fast (~6s/doc)
     LLAMAPARSE = "llamaparse"       # LlamaCloud cloud API
     PYTHONDOCX = "python-docx"      # pure Python DOCX parser (no LibreOffice)
 
@@ -67,7 +66,7 @@ class EmbeddingProvider(str, Enum):
 
 
 class SheetsProvider(str, Enum):
-    LOCAL = "local"                 # PyMuPDF + Unstructured table extraction
+    LOCAL = "local"                 # PyMuPDF table extraction
     LLAMASHEETS = "llamasheets"     # LlamaCloud LlamaSheets API
 
 
@@ -181,18 +180,13 @@ def get_chunker(strategy: ChunkingStrategy | None = None):
 def get_parser(provider: ParserProvider | None = None):
     """
     Returns the configured document parser.
-    Default: UnstructuredParser (self-hosted Docker).
-    Swap: PARSER_PROVIDER=liteparse | llamaparse
+    Default: LiteParseParser for PDFs, PythonDocxParser for DOCX.
+    Swap: PARSER_PROVIDER=llamaparse for cloud API
     """
     settings = get_settings()
     _provider = provider or ParserProvider(settings.parser_provider)
 
-    if _provider == ParserProvider.UNSTRUCTURED:
-        from src.ingestion.parsers.unstructured import UnstructuredParser
-        log.info("parser_active", provider="unstructured")
-        return UnstructuredParser()
-
-    elif _provider == ParserProvider.LITEPARSE:
+    if _provider == ParserProvider.LITEPARSE:
         from src.ingestion.parsers.liteparse import LiteParseParser
         log.info("parser_active", provider="liteparse")
         return LiteParseParser()
@@ -217,7 +211,7 @@ def get_parser(provider: ParserProvider | None = None):
 def get_sheet_extractor(provider: SheetsProvider | None = None):
     """
     Returns the configured table/sheet extractor.
-    Default: LocalSheetExtractor (PyMuPDF + Unstructured fallback).
+    Default: LocalSheetExtractor (PyMuPDF).
     Swap: SHEETS_PROVIDER=llamasheets
     """
     settings = get_settings()

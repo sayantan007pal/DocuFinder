@@ -10,7 +10,6 @@ x-api-env: &api-env
     # Override localhost URLs with Docker service names
     - VALKEY_URL=redis://valkey:6379/0
     - MONGODB_URL=mongodb://admin:docufinderpassword@mongodb:27017
-    - UNSTRUCTURED_URL=http://unstructured-lb:8000
     - OLLAMA_BASE_URL=http://host.docker.internal:11434
     # Override paths to use Docker volume mounts (not ephemeral /tmp)
     - UPLOAD_DIR=/app/uploads
@@ -52,86 +51,6 @@ services:
       timeout: 10s
       retries: 5
 
-  # ── Unstructured.io x4 (parsing containers) ───────────────
-  unstructured-1:
-    image: quay.io/unstructured-io/unstructured-api:latest
-    container_name: docufinder_unstructured_1
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',8000)); s.close()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    restart: unless-stopped
-
-  unstructured-2:
-    image: quay.io/unstructured-io/unstructured-api:latest
-    container_name: docufinder_unstructured_2
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',8000)); s.close()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    restart: unless-stopped
-
-  unstructured-3:
-    image: quay.io/unstructured-io/unstructured-api:latest
-    container_name: docufinder_unstructured_3
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',8000)); s.close()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    restart: unless-stopped
-
-  unstructured-4:
-    image: quay.io/unstructured-io/unstructured-api:latest
-    container_name: docufinder_unstructured_4
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',8000)); s.close()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    restart: unless-stopped
-
-  # ── Nginx load balancer for Unstructured ─────────────────
-  unstructured-lb:
-    image: nginx:alpine
-    container_name: docufinder_unstructured_lb
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./nginx/unstructured.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      unstructured-1:
-        condition: service_healthy
-      unstructured-2:
-        condition: service_healthy
-      unstructured-3:
-        condition: service_healthy
-      unstructured-4:
-        condition: service_healthy
-    restart: unless-stopped
-
   # ── FastAPI (main API) ────────────────────────────────────
   api:
     build: .
@@ -144,8 +63,6 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-      unstructured-lb:
-        condition: service_started
     volumes:
       - uploads_data:/app/uploads
       - watch_root_data:/app/watch_root

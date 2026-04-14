@@ -8,7 +8,6 @@ import structlog
 from src.core.config import get_settings
 from src.core.providers import get_parser
 from src.ingestion.router import route_to_parser
-from src.ingestion.parsers.unstructured import UnstructuredParser
 
 log = structlog.get_logger(__name__)
 
@@ -54,10 +53,6 @@ async def load_document(
         # Intelligent routing: classify PDF, pick optimal parser
         config = route_to_parser(file_path, mime_type)
         parser = get_parser(config.provider)
-
-        # If unstructured, pass the routing-determined strategy
-        if isinstance(parser, UnstructuredParser):
-            parser = UnstructuredParser(strategy=config.strategy)
 
         log.info("parser_selected",
                  doc_id=doc_id,

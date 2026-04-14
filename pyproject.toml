@@ -34,7 +34,6 @@ dependencies = [
     "pymongo>=4.8",
 
     # ── Document parsing ──────────────────────────────────────────
-    "unstructured[pdf,docx]>=0.15",
     "python-magic>=0.4",
 
     # ── Ingestion utilities ───────────────────────────────────────

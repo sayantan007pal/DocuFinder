@@ -28,21 +28,21 @@ ROUTING_TABLE: dict[tuple, ParserConfig] = {
     # TEXT_DENSE: fast extraction, no OCR needed
     ("application/pdf", PDFType.TEXT_DENSE):
         ParserConfig(ParserProvider.LITEPARSE, "fast", False, 1),
-    # SCANNED: requires OCR with hi_res for accuracy
+    # SCANNED: requires OCR — use LlamaParse agentic tier
     ("application/pdf", PDFType.SCANNED):
-        ParserConfig(ParserProvider.UNSTRUCTURED, "hi_res", True, 2,
+        ParserConfig(ParserProvider.LLAMAPARSE, "hi_res", True, 2,
                      llamaparse_tier="agentic"),
-    # COMPLEX_LAYOUT: use fast for speed (hi_res optional for OCR-heavy docs)
+    # COMPLEX_LAYOUT: use LlamaParse for better accuracy
     ("application/pdf", PDFType.COMPLEX_LAYOUT):
-        ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 2,
+        ParserConfig(ParserProvider.LLAMAPARSE, "fast", False, 2,
                      llamaparse_tier="cost_effective"),
     # MIXED: balance speed and OCR capability
     ("application/pdf", PDFType.MIXED):
-        ParserConfig(ParserProvider.UNSTRUCTURED, "fast", True, 2,
+        ParserConfig(ParserProvider.LLAMAPARSE, "fast", True, 2,
                      llamaparse_tier="cost_effective"),
-    # DOCX: always fast, no OCR
+    # DOCX: use python-docx (pure Python, no external dependencies)
     ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", None):
-        ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 1),
+        ParserConfig(ParserProvider.PYTHONDOCX, "fast", False, 1),
 }
 
 
@@ -72,7 +72,7 @@ def route_to_parser(file_path: str, mime_type: str) -> ParserConfig:
     1. Classify PDF type (if applicable)
     2. Check per-type env var overrides
     3. Look up ROUTING_TABLE
-    4. Fall back to Unstructured fast
+    4. Fall back to LiteParse
     """
     settings = get_settings()
     pdf_type = None
@@ -86,7 +86,7 @@ def route_to_parser(file_path: str, mime_type: str) -> ParserConfig:
         key = (mime_type, pdf_type)
         base_config = ROUTING_TABLE.get(
             key,
-            ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 3),
+            ParserConfig(ParserProvider.LITEPARSE, "fast", False, 3),
         )
         new_config = ParserConfig(
             provider=override_provider,
@@ -116,4 +116,4 @@ def route_to_parser(file_path: str, mime_type: str) -> ParserConfig:
 
     # Ultimate fallback
     log.warning("parser_routing_fallback", mime_type=mime_type)
-    return ParserConfig(ParserProvider.UNSTRUCTURED, "fast", False, 3)
+    return ParserConfig(ParserProvider.LITEPARSE, "fast", False, 3)

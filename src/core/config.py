@@ -53,18 +53,15 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
 
     # ── Parsing ────────────────────────────────────────────────
-    parser_provider: str = "unstructured"          # unstructured | liteparse | llamaparse
-    unstructured_url: str = "http://localhost:8000"
-    unstructured_strategy: str = "fast"            # fast | hi_res
-    enable_pdf_classification: bool = True
-    unstructured_scale: int = 4
+    parser_provider: str = "liteparse"             # liteparse | llamaparse
+    enable_pdf_classification: bool = False
 
     # ── Per-type parser overrides (optional) ───────────────────
-    parser_text_dense: Optional[str] = None        # liteparse | unstructured | llamaparse
+    parser_text_dense: Optional[str] = None        # liteparse | llamaparse
     parser_scanned: Optional[str] = None
     parser_complex: Optional[str] = None
     parser_mixed: Optional[str] = None
-    parser_docx: Optional[str] = None              # python-docx | liteparse | unstructured | llamaparse
+    parser_docx: Optional[str] = "python-docx"     # python-docx | llamaparse (default: python-docx)
 
     # ── LlamaCloud ─────────────────────────────────────────────
     llama_cloud_api_key: str = ""
