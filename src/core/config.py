@@ -116,7 +116,8 @@ class Settings(BaseSettings):
     backup_retention_days: int = 30
 
     # ── Observability ──────────────────────────────────────────
-    phoenix_endpoint: str = "http://localhost:4317"
+    tracing_enabled: bool = False  # Set True to enable Arize Phoenix tracing
+    phoenix_endpoint: str = "http://phoenix:4317"
 
     @property
     def is_production(self) -> bool:

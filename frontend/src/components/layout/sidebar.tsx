@@ -68,7 +68,7 @@ export function Sidebar() {
               className="gradient-text font-display" 
               style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}
             >
-              Command Center
+              DocIntel Hub
             </span>
             <span style={{ fontSize: 11, color: "hsl(215, 20%, 55%)", letterSpacing: "0.05em" }}>
               Document Intelligence

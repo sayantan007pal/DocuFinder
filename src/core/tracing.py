@@ -12,15 +12,19 @@ def setup_tracing() -> None:
     Configure OpenTelemetry + Arize Phoenix tracing.
     LlamaIndex instrumentation is automatic once the provider is set.
     """
+    from src.core.config import get_settings
+    settings = get_settings()
+    
+    if not settings.tracing_enabled:
+        log.info("tracing_disabled", hint="Set TRACING_ENABLED=true to enable")
+        return
+    
     try:
         from opentelemetry import trace
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
-        from src.core.config import get_settings
-
-        settings = get_settings()
 
         provider = TracerProvider()
         exporter = OTLPSpanExporter(

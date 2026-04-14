@@ -609,9 +609,10 @@ function MessageBubble({
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "hsl(262 80% 65% / 0.1)";
                     }}
+                    title={`${citation.filename} - ${(citation.score * 100).toFixed(0)}% match`}
                   >
                     <Icon name="article" size={12} />
-                    [Doc-{i + 1}]
+                    {citation.page_number ? `Page ${citation.page_number}` : `Doc-${i + 1}`}
                   </button>
                 ))}
               </div>
