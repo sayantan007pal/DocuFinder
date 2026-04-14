@@ -6,6 +6,7 @@ import { useDropzone } from "react-dropzone";
 import { useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { TopAppBar } from "@/components/layout/top-app-bar";
+import { DocumentViewerPanel } from "@/components/document-viewer";
 import {
   Icon,
   Icons,
@@ -33,6 +34,7 @@ export default function DocumentMatrixPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
   const [conflictInfo, setConflictInfo] = useState<{ filename: string; doc_id: string } | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch documents
@@ -362,12 +364,21 @@ export default function DocumentMatrixPage() {
             {/* Actions */}
             <div style={{ display: "flex", gap: 12 }}>
               <KineticButton 
+                variant="primary" 
+                icon="visibility"
+                fullWidth
+                onClick={() => setViewingDoc(selectedDoc)}
+                disabled={selectedDoc.status !== "completed"}
+              >
+                View Document
+              </KineticButton>
+              <KineticButton 
                 variant="secondary" 
                 icon={Icons.search}
                 fullWidth
                 onClick={() => window.location.href = `/search?doc_id=${selectedDoc.id}`}
               >
-                Search in Document
+                Search
               </KineticButton>
               <KineticButton 
                 variant="secondary" 
@@ -375,12 +386,33 @@ export default function DocumentMatrixPage() {
                 fullWidth
                 onClick={() => window.location.href = `/graph?doc_id=${selectedDoc.id}`}
               >
-                Analyze Reasoning
+                Graph
               </KineticButton>
             </div>
           </div>
         )}
       </div>
+
+      {/* Document Viewer Panel */}
+      {viewingDoc && (
+        <div
+          style={{
+            position: "fixed",
+            top: 64, // below TopAppBar
+            left: 260, // account for sidebar
+            right: 0,
+            bottom: 0,
+            zIndex: 40,
+            background: "var(--background)",
+          }}
+        >
+          <DocumentViewerPanel
+            document={viewingDoc}
+            onClose={() => setViewingDoc(null)}
+            defaultMode="panel"
+          />
+        </div>
+      )}
 
       {/* Upload Dialog */}
       {uploadDialogOpen && (

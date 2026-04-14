@@ -3,14 +3,14 @@
  * Follows Command Center design system (no 1px borders)
  */
 
-import { ReactNode, CSSProperties } from "react";
+import { ReactNode, CSSProperties, MouseEvent } from "react";
 
 interface GlassmorphicCardProps {
   children: ReactNode;
   variant?: "default" | "elevated" | "panel";
   className?: string;
   style?: CSSProperties;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent<HTMLDivElement>) => void;
   hoverable?: boolean;
 }
 

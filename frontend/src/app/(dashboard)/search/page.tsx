@@ -1,646 +1,422 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { TopAppBar } from "@/components/layout/top-app-bar";
+import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
+import { ChatInput } from "@/components/chat/ChatInput";
+import { WelcomeHero } from "@/components/chat/WelcomeHero";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { CitationPreview } from "@/components/chat/CitationPreview";
+import { TypingIndicator } from "@/components/chat/TypingIndicator";
+import { ExportDropdown } from "@/components/chat/ExportDropdown";
+import { useChatSync } from "@/hooks/useChatSync";
 import {
   Icon,
-  Icons,
   GlassmorphicCard,
   KineticButton,
-  ProgressBar,
 } from "@/components/ui";
-import type { SearchResponse, SearchHit } from "@/types/api";
+import type { SearchResponse, SearchHit, ChatMessage } from "@/types/api";
 import Link from "next/link";
 
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: SearchHit[];
-  timestamp: Date;
-  metadata?: {
-    took_ms?: number;
-    cached?: boolean;
-    provider?: string;
-  };
+interface FormattedMessage extends ChatMessage {
+  created_at: string;
 }
 
 export default function IntelligenceTerminalPage() {
   const searchParams = useSearchParams();
   const initialDocId = searchParams.get("doc_id");
-  
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedCitation, setSelectedCitation] = useState<SearchHit | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Load from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("chat-messages");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setMessages(parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
-      } catch (e) {
-        console.error("Failed to parse saved messages");
-      }
-    }
-  }, []);
-  
-  // Save to localStorage on change
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem("chat-messages", JSON.stringify(messages));
-    }
-  }, [messages]);
-  
-  // Auto-scroll to bottom
+  const citationPanelOpen = selectedCitation !== null;
+
+  // Use chat sync hook for API-backed sessions
+  const {
+    sessions,
+    messages,
+    isOnline,
+    pendingCount,
+    isLoadingSessions,
+    createSession,
+    updateSession,
+    deleteSession,
+    addMessage,
+    isCreatingSession,
+    isAddingMessage,
+  } = useChatSync({
+    docFilter: initialDocId ?? undefined,
+    sessionId: activeSessionId ?? undefined,
+    enabled: true,
+  });
+
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const searchMutation = useMutation({
-    mutationFn: (query: string) => 
-      apiClient.post<SearchResponse>("search", { 
-        query, 
-        top_k: 8,
-        ...(initialDocId ? { doc_ids: [initialDocId] } : {}),
-      }),
-    onSuccess: (data, query) => {
-      // Only show citations with score > 50%
-      const filteredCitations = data.results.filter(r => r.score > 0.5);
-      
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: data.answer || "I found relevant information in your documents.",
-        citations: filteredCitations,
-        timestamp: new Date(),
-        metadata: {
-          took_ms: data.took_ms,
-          cached: data.cached,
-          provider: data.provider_used,
-        },
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-    },
-  });
-
-  const handleSend = () => {
-    if (!input.trim() || searchMutation.isPending) return;
-    
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: input.trim(),
-      timestamp: new Date(),
+  // Auto-select first session or create new one
+  useEffect(() => {
+    const initSession = async () => {
+      if (sessions.length > 0 && !activeSessionId) {
+        const activeSession = sessions.find((s) => s.is_active) || sessions[0];
+        setActiveSessionId(activeSession.id);
+      } else if (sessions.length === 0 && !isLoadingSessions && !isCreatingSession) {
+        try {
+          const newSession = await createSession({
+            title: "New Chat",
+            doc_filter: initialDocId ?? undefined,
+          });
+          setActiveSessionId(newSession.id);
+        } catch (e) {
+          console.error("Failed to create initial session:", e);
+        }
+      }
     };
-    
-    setMessages(prev => [...prev, userMessage]);
-    searchMutation.mutate(input.trim());
-    setInput("");
-  };
+    initSession();
+  }, [sessions, activeSessionId, isLoadingSessions, isCreatingSession, createSession, initialDocId]);
 
-  const clearHistory = () => {
-    setMessages([]);
-    localStorage.removeItem("chat-messages");
-  };
+  // Handle new chat session
+  const handleNewSession = useCallback(async () => {
+    try {
+      const newSession = await createSession({
+        title: "New Chat",
+        doc_filter: initialDocId ?? undefined,
+      });
+      setActiveSessionId(newSession.id);
+    } catch (e) {
+      console.error("Failed to create session:", e);
+    }
+  }, [createSession, initialDocId]);
 
-  const quickCommands = [
-    { label: "/summarize recent", icon: "summarize" },
-    { label: "/search policies", icon: "policy" },
-    { label: "/compare versions", icon: "compare" },
-  ];
+  // Handle session rename
+  const handleRenameSession = useCallback(
+    async (sessionId: string, newTitle: string) => {
+      try {
+        await updateSession(sessionId, { title: newTitle });
+      } catch (e) {
+        console.error("Failed to rename session:", e);
+      }
+    },
+    [updateSession]
+  );
+
+  // Handle session delete
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await deleteSession(sessionId);
+        if (sessionId === activeSessionId) {
+          const remaining = sessions.filter((s) => s.id !== sessionId);
+          if (remaining.length > 0) {
+            setActiveSessionId(remaining[0].id);
+          } else {
+            setActiveSessionId(null);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to delete session:", e);
+      }
+    },
+    [deleteSession, activeSessionId, sessions]
+  );
+
+  // Handle sending messages with RAG search
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      if (!activeSessionId) return;
+
+      await addMessage(activeSessionId, {
+        role: "user",
+        content,
+        citations: [],
+        metadata: {},
+      });
+
+      setIsSearching(true);
+      try {
+        const searchResponse = await apiClient.post<SearchResponse>("search", {
+          query: content,
+          top_k: 8,
+          ...(initialDocId ? { doc_ids: [initialDocId] } : {}),
+        });
+
+        const filteredCitations = searchResponse.results.filter((r) => r.score > 0.5);
+
+        await addMessage(activeSessionId, {
+          role: "assistant",
+          content: searchResponse.answer || "I found relevant information in your documents.",
+          citations: filteredCitations,
+          metadata: {
+            took_ms: searchResponse.took_ms,
+            cached: searchResponse.cached,
+            provider: searchResponse.provider_used,
+          },
+        });
+
+        const currentSession = sessions.find((s) => s.id === activeSessionId);
+        if (currentSession && currentSession.message_count === 0) {
+          await updateSession(activeSessionId, {
+            title: content.slice(0, 50),
+          });
+        }
+      } catch (e) {
+        await addMessage(activeSessionId, {
+          role: "assistant",
+          content: "Sorry, I encountered an error while searching. Please try again.",
+          citations: [],
+          metadata: {},
+        });
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [activeSessionId, addMessage, initialDocId, sessions, updateSession]
+  );
+
+  // Handle suggestion click from WelcomeHero
+  const handleSuggestionClick = useCallback(
+    (suggestion: string) => {
+      handleSendMessage(suggestion);
+    },
+    [handleSendMessage]
+  );
+
+  // Format messages
+  const formattedMessages: FormattedMessage[] = messages.map((m) => ({
+    ...m,
+    created_at: m.created_at || new Date().toISOString(),
+  }));
+
+  // Has messages to show
+  const hasMessages = formattedMessages.length > 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 80px)" }}>
-      <TopAppBar 
+    <div className="flex flex-col h-[calc(100vh-80px)]">
+      <TopAppBar
         actions={
-          messages.length > 0 ? (
-            <KineticButton variant="ghost" size="sm" icon="delete" onClick={clearHistory}>
-              Clear
+          <div className="flex items-center gap-3">
+            {!isOnline && (
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg" style={{ background: "hsl(45 90% 50% / 0.15)", color: "hsl(45, 90%, 60%)" }}>
+                <Icon name="cloud_off" size={14} />
+                Offline
+              </span>
+            )}
+            {pendingCount > 0 && (
+              <span className="px-2 py-1 text-xs rounded-lg" style={{ background: "hsl(45 90% 50% / 0.15)", color: "hsl(45, 90%, 60%)" }}>
+                {pendingCount} pending
+              </span>
+            )}
+            {hasMessages && (
+              <ExportDropdown messages={formattedMessages} sessionTitle={sessions.find((s) => s.id === activeSessionId)?.title} />
+            )}
+            <KineticButton variant="primary" size="sm" icon="add" onClick={handleNewSession} loading={isCreatingSession}>
+              New Chat
             </KineticButton>
-          ) : null
+          </div>
         }
       />
 
-      <div style={{ display: "flex", flex: 1, gap: 24, minHeight: 0 }}>
-        {/* Left: Chat Interface */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {/* Session Info */}
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: 16, 
-            marginBottom: 16,
-            padding: "12px 16px",
-            background: "var(--surface-container-low)",
-            borderRadius: 10,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Icon name="tag" size={14} style={{ color: "hsl(215, 20%, 55%)" }} />
-              <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>
-                Session: {new Date().toLocaleDateString()}
-              </span>
-            </div>
-            {initialDocId && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon name="filter_alt" size={14} style={{ color: "hsl(262, 80%, 70%)" }} />
-                <span style={{ fontSize: 12, color: "hsl(262, 80%, 70%)" }}>
-                  Filtered to document
+      <div className="flex flex-1 min-h-0">
+        {/* Chat History Sidebar */}
+        <ChatHistorySidebar
+          sessions={sessions}
+          activeSessionId={activeSessionId ?? undefined}
+          onSessionSelect={setActiveSessionId}
+          onNewSession={handleNewSession}
+          onRenameSession={handleRenameSession}
+          onDeleteSession={handleDeleteSession}
+          isCreating={isCreatingSession}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          isOnline={isOnline}
+          pendingCount={pendingCount}
+        />
+
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col min-w-0" style={{ background: "linear-gradient(180deg, rgba(11, 19, 35, 0.98) 0%, rgba(19, 28, 43, 0.98) 100%)" }}>
+          {/* Session Header */}
+          {activeSessionId && (
+            <div className="flex items-center justify-between px-6 py-3" style={{ background: "rgba(255, 255, 255, 0.02)" }}>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Icon name="chat" size={16} style={{ color: "hsl(262, 80%, 70%)" }} />
+                  <span className="text-sm font-medium" style={{ color: "hsl(210, 40%, 98%)" }}>
+                    {sessions.find((s) => s.id === activeSessionId)?.title || "Chat"}
+                  </span>
+                </div>
+                {initialDocId && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg" style={{ background: "hsl(200 90% 65% / 0.1)" }}>
+                    <Icon name="filter_alt" size={14} style={{ color: "hsl(200, 90%, 65%)" }} />
+                    <span className="text-xs" style={{ color: "hsl(200, 90%, 65%)" }}>
+                      Document filter active
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full" style={{ background: isOnline ? "hsl(142, 76%, 50%)" : "hsl(45, 90%, 50%)" }} />
+                <span className="text-xs" style={{ color: "hsl(215, 20%, 55%)" }}>
+                  {isOnline ? "Connected" : "Offline"}
                 </span>
               </div>
-            )}
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "hsl(142, 76%, 50%)" }}>●</span>
-              <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>Active</span>
             </div>
-          </div>
+          )}
 
           {/* Messages Area */}
-          <div 
-            style={{ 
-              flex: 1, 
-              overflowY: "auto", 
-              display: "flex", 
-              flexDirection: "column",
-              gap: 16,
-              paddingRight: 8,
-            }}
-          >
-            {messages.length === 0 ? (
-              <div style={{ 
-                flex: 1, 
-                display: "flex", 
-                flexDirection: "column",
-                alignItems: "center", 
-                justifyContent: "center",
-                textAlign: "center",
-                padding: 40,
-              }}>
-                <div
-                  className="gradient-glow"
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 20,
-                    background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 24,
-                  }}
-                >
-                  <Icon name={Icons.ai} size={40} style={{ color: "#fff" }} />
-                </div>
-                <h2 className="font-display" style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: 8 }}>
-                  Intelligence Terminal
-                </h2>
-                <p style={{ color: "hsl(215, 20%, 55%)", fontSize: 14, maxWidth: 400, marginBottom: 24 }}>
-                  Ask questions about your documents. The AI will analyze, reason, and provide answers with source citations.
-                </p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                  {["What are the key policies?", "Summarize recent documents", "Compare contract terms"].map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => {
-                        setInput(q);
-                      }}
+          <div className="flex-1 overflow-auto">
+            {!hasMessages ? (
+              <WelcomeHero onSuggestionClick={handleSuggestionClick} docFilter={initialDocId ?? undefined} />
+            ) : (
+              <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+                {formattedMessages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-5 py-4 ${msg.role === "user" ? "rounded-br-md" : "rounded-bl-md"}`}
                       style={{
-                        padding: "8px 16px",
-                        borderRadius: 20,
-                        background: "var(--surface-container)",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 13,
-                        color: "hsl(215, 20%, 75%)",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "var(--surface-container-high)";
-                        e.currentTarget.style.color = "hsl(210, 40%, 98%)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "var(--surface-container)";
-                        e.currentTarget.style.color = "hsl(215, 20%, 75%)";
+                        background: msg.role === "user" ? "hsl(262 80% 65% / 0.15)" : "rgba(255, 255, 255, 0.04)",
                       }}
                     >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <MessageBubble 
-                  key={message.id} 
-                  message={message} 
-                  onCitationClick={setSelectedCitation}
-                />
-              ))
-            )}
-            
-            {/* Loading indicator */}
-            {searchMutation.isPending && (
-              <div style={{ display: "flex", gap: 12, padding: "16px 0" }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon name={Icons.ai} size={18} style={{ color: "#fff" }} />
-                </div>
-                <GlassmorphicCard style={{ padding: 16, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Icon name={Icons.processing} size={18} className="animate-spin" style={{ color: "hsl(262, 80%, 70%)" }} />
-                    <span style={{ fontSize: 14, color: "hsl(215, 20%, 65%)" }}>
-                      Analyzing documents...
-                    </span>
+                      {msg.role === "assistant" ? (
+                        <>
+                          <MarkdownRenderer content={msg.content} />
+                          {msg.citations && msg.citations.length > 0 && (
+                            <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                              <span className="text-xs uppercase tracking-wider mb-2 block" style={{ color: "hsl(215, 20%, 50%)" }}>
+                                Sources
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {msg.citations.map((citation, idx) => (
+                                  <CitationPreview
+                                    key={idx}
+                                    citation={citation}
+                                    onClick={() => setSelectedCitation(citation)}
+                                  >
+                                    <button
+                                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all duration-200"
+                                      style={{ background: "rgba(255, 255, 255, 0.05)", color: "hsl(200, 90%, 70%)" }}
+                                      onMouseOver={(e) => {
+                                        e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                                      }}
+                                      onMouseOut={(e) => {
+                                        e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                                      }}
+                                    >
+                                      <Icon name="description" size={12} />
+                                      {citation.filename}
+                                      {citation.page_number && ` (p.${citation.page_number})`}
+                                    </button>
+                                  </CitationPreview>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {msg.metadata?.took_ms && (
+                            <div className="mt-3 text-xs" style={{ color: "hsl(215, 20%, 45%)" }}>
+                              {msg.metadata.cached ? "⚡ Cached" : `${msg.metadata.took_ms}ms`}
+                              {msg.metadata.provider && ` • ${msg.metadata.provider}`}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm leading-relaxed" style={{ color: "hsl(210, 40%, 98%)" }}>
+                          {msg.content}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 12 }}>
-                    <ProgressBar value={65} variant="gradient" size="sm" />
+                ))}
+
+                {/* Typing Indicator */}
+                {(isSearching || isAddingMessage) && (
+                  <div className="flex justify-start">
+                    <div className="rounded-2xl rounded-bl-md px-5 py-4" style={{ background: "rgba(255, 255, 255, 0.04)" }}>
+                      <TypingIndicator />
+                    </div>
                   </div>
-                </GlassmorphicCard>
+                )}
+
+                <div ref={messagesEndRef} />
               </div>
             )}
-            
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* Command Input Bar */}
-          <div 
-            className="glass-elevated"
-            style={{ 
-              marginTop: 16,
-              padding: "16px 20px",
-              borderRadius: 16,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "var(--surface-container)",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon name={Icons.attach} size={20} style={{ color: "hsl(215, 20%, 65%)" }} />
-              </button>
-              
-              <div style={{ flex: 1, position: "relative" }}>
-                <span 
-                  style={{ 
-                    position: "absolute",
-                    left: 16,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    fontSize: 13,
-                    color: "hsl(262, 80%, 70%)",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  System://
-                </span>
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                  placeholder="Ask about your documents..."
-                  style={{
-                    width: "100%",
-                    padding: "14px 16px 14px 90px",
-                    borderRadius: 10,
-                    background: "var(--surface-container-low)",
-                    border: "none",
-                    color: "hsl(210, 40%, 98%)",
-                    fontSize: 15,
-                    outline: "none",
-                    fontFamily: "inherit",
-                  }}
-                />
-              </div>
-
-              <button
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "var(--surface-container)",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon name={Icons.microphone} size={20} style={{ color: "hsl(215, 20%, 65%)" }} />
-              </button>
-
-              <KineticButton
-                variant="primary"
-                icon={Icons.send}
-                onClick={handleSend}
-                disabled={!input.trim() || searchMutation.isPending}
-              >
-                Execute
-              </KineticButton>
-            </div>
-
-            {/* Quick Commands */}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              {quickCommands.map((cmd) => (
-                <button
-                  key={cmd.label}
-                  onClick={() => setInput(cmd.label)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    background: "var(--surface-container)",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    color: "hsl(215, 20%, 65%)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Icon name={cmd.icon} size={14} />
-                  {cmd.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Chat Input */}
+          <ChatInput
+            onSend={handleSendMessage}
+            isLoading={isSearching || isAddingMessage}
+            disabled={!activeSessionId || !isOnline}
+            placeholder={initialDocId ? "Ask about this document..." : "Ask about your documents..."}
+          />
         </div>
 
-        {/* Right: Context Panel */}
-        <div style={{ width: 380, flexShrink: 0 }}>
-          {selectedCitation ? (
-            <GlassmorphicCard variant="elevated" style={{ padding: 24, height: "100%" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                <span className="uppercase-label">Citation Details</span>
-                <button
-                  onClick={() => setSelectedCitation(null)}
-                  style={{
-                    background: "var(--surface-container)",
-                    border: "none",
-                    borderRadius: 6,
-                    width: 28,
-                    height: 28,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon name={Icons.close} size={16} style={{ color: "hsl(215, 20%, 65%)" }} />
-                </button>
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <h3 className="font-display" style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: 8 }}>
-                  {selectedCitation.filename}
-                </h3>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {selectedCitation.page_number && (
-                    <span style={{
-                      padding: "4px 10px",
-                      background: "var(--surface-container)",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      color: "hsl(215, 20%, 65%)",
-                    }}>
-                      Page {selectedCitation.page_number}
-                    </span>
-                  )}
-                  <span style={{
-                    padding: "4px 10px",
-                    background: "hsl(262 80% 65% / 0.15)",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    color: "hsl(262, 80%, 70%)",
-                    fontWeight: 500,
-                  }}>
-                    {(selectedCitation.score * 100).toFixed(0)}% match
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <span className="uppercase-label" style={{ marginBottom: 8, display: "block" }}>
-                  Excerpt
-                </span>
-                <p style={{ 
-                  fontSize: 14, 
-                  color: "hsl(215, 20%, 75%)", 
-                  lineHeight: 1.7,
-                  padding: 16,
-                  background: "var(--surface-container-low)",
-                  borderRadius: 10,
-                }}>
-                  {selectedCitation.chunk_text}
-                </p>
-              </div>
-
-              <Link href={`/documents?doc_id=${selectedCitation.doc_id}`}>
-                <KineticButton variant="secondary" fullWidth icon="open_in_new">
-                  View in Document Matrix
-                </KineticButton>
-              </Link>
-            </GlassmorphicCard>
-          ) : (
-            <GlassmorphicCard 
-              style={{ 
-                padding: 40, 
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 16,
-                  background: "var(--surface-container)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 20,
-                }}
-              >
-                <Icon name="touch_app" size={28} style={{ color: "hsl(215, 20%, 45%)" }} />
-              </div>
-              <h3 className="font-display" style={{ fontSize: "1rem", fontWeight: 500, marginBottom: 8 }}>
-                Awaiting Selection
-              </h3>
-              <p style={{ fontSize: 13, color: "hsl(215, 20%, 55%)" }}>
-                Select a citation from the chat to view details and navigate to the source document.
-              </p>
-              
-              <div style={{ 
-                marginTop: 24, 
-                padding: "12px 16px", 
-                background: "var(--surface-container-low)",
-                borderRadius: 10,
-                width: "100%",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "hsl(142, 76%, 50%)" }}>●</span>
-                  <span style={{ fontSize: 12, color: "hsl(215, 20%, 55%)" }}>
-                    Buffer: IDLE
-                  </span>
-                </div>
-              </div>
-            </GlassmorphicCard>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Message Bubble Component
-function MessageBubble({ 
-  message, 
-  onCitationClick 
-}: { 
-  message: ChatMessage;
-  onCitationClick: (citation: SearchHit) => void;
-}) {
-  const isUser = message.role === "user";
-  
-  return (
-    <div 
-      style={{ 
-        display: "flex", 
-        gap: 12,
-        flexDirection: isUser ? "row-reverse" : "row",
-      }}
-    >
-      {/* Avatar */}
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: isUser 
-            ? "var(--surface-container-high)"
-            : "linear-gradient(135deg, hsl(262,80%,65%), hsl(200,90%,65%))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon 
-          name={isUser ? Icons.user : Icons.ai} 
-          size={18} 
-          style={{ color: isUser ? "hsl(215, 20%, 65%)" : "#fff" }} 
-        />
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: "75%", minWidth: 0 }}>
-        <GlassmorphicCard
-          variant={isUser ? "panel" : "default"}
+        {/* Right: Citation Details Panel */}
+        <div
+          className="shrink-0 transition-all duration-300"
           style={{
-            padding: 16,
-            ...(isUser && {
-              background: "var(--surface-container-high)",
-            }),
+            width: citationPanelOpen ? 380 : 0,
+            opacity: citationPanelOpen ? 1 : 0,
+            overflow: "hidden",
           }}
         >
-          <p style={{ 
-            fontSize: 14, 
-            color: "hsl(210, 40%, 98%)", 
-            lineHeight: 1.7,
-            margin: 0,
-          }}>
-            {message.content}
-          </p>
-
-          {/* Citations */}
-          {message.citations && message.citations.length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--surface-container-high)" }}>
-              <span style={{ fontSize: 11, color: "hsl(215, 20%, 55%)", display: "block", marginBottom: 8 }}>
-                Sources ({message.citations.length})
-              </span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {message.citations.slice(0, 5).map((citation, i) => (
+          {selectedCitation && (
+            <GlassmorphicCard variant="elevated" className="h-full">
+              <div className="p-6 h-full flex flex-col">
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-xs uppercase tracking-wider" style={{ color: "hsl(215, 20%, 50%)" }}>
+                    Citation Details
+                  </span>
                   <button
-                    key={`${citation.doc_id}-${i}`}
-                    onClick={() => onCitationClick(citation)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 6,
-                      background: "hsl(262 80% 65% / 0.1)",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      color: "hsl(262, 80%, 75%)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "hsl(262 80% 65% / 0.2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "hsl(262 80% 65% / 0.1)";
-                    }}
-                    title={`${citation.filename} - ${(citation.score * 100).toFixed(0)}% match`}
+                    onClick={() => setSelectedCitation(null)}
+                    className="p-1.5 rounded-lg transition-colors"
+                    style={{ background: "rgba(255, 255, 255, 0.05)" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)")}
                   >
-                    <Icon name="article" size={12} />
-                    {citation.page_number ? `Page ${citation.page_number}` : `Doc-${i + 1}`}
+                    <Icon name="close" size={16} style={{ color: "hsl(215, 20%, 65%)" }} />
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </GlassmorphicCard>
+                </div>
 
-        {/* Metadata */}
-        <div style={{ 
-          display: "flex", 
-          alignItems: "center", 
-          gap: 12, 
-          marginTop: 6,
-          paddingLeft: 4,
-          flexDirection: isUser ? "row-reverse" : "row",
-        }}>
-          <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>
-            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </span>
-          {message.metadata?.took_ms && (
-            <span style={{ fontSize: 11, color: "hsl(215, 20%, 45%)" }}>
-              {message.metadata.took_ms.toFixed(0)}ms
-            </span>
-          )}
-          {message.metadata?.cached && (
-            <span style={{ fontSize: 11, color: "hsl(142, 76%, 50%)" }}>
-              Cached
-            </span>
+                <div className="mb-5">
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: "hsl(210, 40%, 98%)" }}>
+                    {selectedCitation.filename}
+                  </h3>
+                  <div className="flex gap-2">
+                    {selectedCitation.page_number && (
+                      <span className="px-3 py-1.5 rounded-lg text-xs" style={{ background: "rgba(255, 255, 255, 0.05)", color: "hsl(215, 20%, 65%)" }}>
+                        Page {selectedCitation.page_number}
+                      </span>
+                    )}
+                    <span className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "hsl(262 80% 65% / 0.15)", color: "hsl(262, 80%, 70%)" }}>
+                      {(selectedCitation.score * 100).toFixed(0)}% match
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 min-h-0">
+                  <span className="text-xs uppercase tracking-wider mb-3 block" style={{ color: "hsl(215, 20%, 50%)" }}>
+                    Excerpt
+                  </span>
+                  <div className="p-4 rounded-xl overflow-auto max-h-[300px]" style={{ background: "rgba(255, 255, 255, 0.03)" }}>
+                    <p className="text-sm leading-relaxed" style={{ color: "hsl(215, 20%, 75%)" }}>
+                      {selectedCitation.chunk_text}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-5" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                  <Link href={`/documents?doc_id=${selectedCitation.doc_id}&page=${selectedCitation.page_number || 1}`}>
+                    <KineticButton variant="secondary" fullWidth icon="open_in_new">
+                      View in Document Matrix
+                    </KineticButton>
+                  </Link>
+                </div>
+              </div>
+            </GlassmorphicCard>
           )}
         </div>
       </div>

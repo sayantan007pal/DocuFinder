@@ -410,7 +410,7 @@ export default function ReasoningGraphPage() {
                 </h3>
                 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                   <StatusBadge 
-                    status="success" 
+                    status="completed" 
                     label={`${((selectedNode.score || 0) * 100).toFixed(0)}% match`}
                   />
                   {selectedNode.data?.page_number && (

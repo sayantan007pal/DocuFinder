@@ -1,0 +1,217 @@
+/**
+ * ChatHistorySidebar — Collapsible sidebar listing chat sessions
+ * Kinetic Observatory design with glass panels
+ */
+"use client";
+
+import { useState } from "react";
+import { ChatSessionItem } from "./ChatSessionItem";
+import { GlassmorphicCard } from "@/components/ui/glassmorphic-card";
+import { KineticButton } from "@/components/ui/kinetic-button";
+import { KineticInput } from "@/components/ui/kinetic-input";
+import { Icon } from "@/components/ui/icon";
+import type { ChatSession } from "@/types/api";
+
+interface ChatHistorySidebarProps {
+  sessions: ChatSession[];
+  activeSessionId?: string;
+  onSessionSelect: (sessionId: string) => void;
+  onNewSession: () => void;
+  onRenameSession: (sessionId: string, newTitle: string) => void;
+  onDeleteSession: (sessionId: string) => void;
+  isCreating?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+  isOnline?: boolean;
+  pendingCount?: number;
+}
+
+export function ChatHistorySidebar({
+  sessions,
+  activeSessionId,
+  onSessionSelect,
+  onNewSession,
+  onRenameSession,
+  onDeleteSession,
+  isCreating,
+  isCollapsed = false,
+  onToggleCollapse,
+  isOnline = true,
+  pendingCount = 0,
+}: ChatHistorySidebarProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter sessions by search query
+  const filteredSessions = sessions.filter((s) =>
+    s.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Group sessions by date
+  const groupedSessions = filteredSessions.reduce((acc, session) => {
+    const date = new Date(session.updated_at);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let group: string;
+    if (date.toDateString() === today.toDateString()) {
+      group = "Today";
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      group = "Yesterday";
+    } else if (date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)) {
+      group = "This Week";
+    } else {
+      group = "Older";
+    }
+
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(session);
+    return acc;
+  }, {} as Record<string, ChatSession[]>);
+
+  const groupOrder = ["Today", "Yesterday", "This Week", "Older"];
+
+  if (isCollapsed) {
+    return (
+      <div
+        className="w-12 h-full flex flex-col items-center py-4 gap-4"
+        style={{ background: "rgba(19, 28, 43, 0.6)" }}
+      >
+        <button
+          onClick={onToggleCollapse}
+          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+          title="Expand sidebar"
+        >
+          <Icon name="menu" size={20} className="text-slate-400" />
+        </button>
+        <button
+          onClick={onNewSession}
+          className="p-2 rounded-lg bg-primary/20 hover:bg-primary/30 transition-colors"
+          title="New chat"
+        >
+          <Icon name="add" size={20} className="text-primary" />
+        </button>
+        <div className="flex-1" />
+        {!isOnline && (
+          <span title="Offline">
+            <Icon
+              name="cloud_off"
+              size={18}
+              className="text-yellow-500"
+            />
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-72 h-full flex flex-col"
+      style={{ background: "rgba(19, 28, 43, 0.6)" }}
+    >
+      {/* Header */}
+      <div className="p-4 border-b border-white/5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Icon name="history" size={20} className="text-primary" />
+            <h3 className="text-sm font-medium text-white">Chat History</h3>
+            {pendingCount > 0 && (
+              <span className="px-1.5 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                {pendingCount} pending
+              </span>
+            )}
+          </div>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1.5 rounded hover:bg-white/10 transition-colors"
+            >
+              <Icon name="chevron_left" size={18} className="text-slate-400" />
+            </button>
+          )}
+        </div>
+
+        {/* New Chat Button */}
+        <KineticButton
+          variant="primary"
+          size="sm"
+          icon="add"
+          fullWidth
+          onClick={onNewSession}
+          loading={isCreating}
+        >
+          New Chat
+        </KineticButton>
+
+        {/* Search */}
+        {sessions.length > 5 && (
+          <div className="mt-3">
+            <KineticInput
+              icon="search"
+              placeholder="Search chats..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              fullWidth
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Status Bar */}
+      {!isOnline && (
+        <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20">
+          <div className="flex items-center gap-2 text-xs text-yellow-400">
+            <Icon name="cloud_off" size={14} />
+            <span>Offline — changes will sync when reconnected</span>
+          </div>
+        </div>
+      )}
+
+      {/* Sessions List */}
+      <div className="flex-1 overflow-auto p-2">
+        {sessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <Icon name="chat_bubble_outline" size={48} className="text-slate-600 mb-3" />
+            <p className="text-sm text-slate-400">No chat history yet</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Start a new conversation to begin
+            </p>
+          </div>
+        ) : filteredSessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 text-center">
+            <Icon name="search_off" size={32} className="text-slate-600 mb-2" />
+            <p className="text-sm text-slate-400">No chats match "{searchQuery}"</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groupOrder.map((group) => {
+              const groupSessions = groupedSessions[group];
+              if (!groupSessions?.length) return null;
+
+              return (
+                <div key={group}>
+                  <h4 className="px-3 py-1 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    {group}
+                  </h4>
+                  <div className="space-y-1">
+                    {groupSessions.map((session) => (
+                      <ChatSessionItem
+                        key={session.id}
+                        session={session}
+                        isActive={session.id === activeSessionId}
+                        onClick={() => onSessionSelect(session.id)}
+                        onRename={(title) => onRenameSession(session.id, title)}
+                        onDelete={() => onDeleteSession(session.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

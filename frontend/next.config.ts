@@ -38,6 +38,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // Webpack config for react-pdf PDF.js worker
+  webpack: (config) => {
+    // Required for react-pdf to work properly with Next.js
+    config.resolve.alias.canvas = false;
+    
+    return config;
+  },
 };
 
 export default nextConfig;
